@@ -1,0 +1,22 @@
+<? xml version="1.0" ?>
+<Mod>
+    <!-- The id can consist of english alphabet or dash "-" -->
+    <Id>trigger-kit</Id> 
+    <Name>TriggerKit</Name> 
+    <Version>1.0.0</Version>
+    <Author>DoctorGester</Author>
+    <SupportedVersion>*</SupportedVersion>
+    <NeedsRestart>false</NeedsRestart>
+    <Description>Giga UI works</Description>
+    <Category>Script</Category>
+
+    <Thumbnail>Data/Images/triggerkit/thumb.png</Thumbnail>
+    <PreviewImage>Data/Images/triggerkit/full.jpg</PreviewImage>
+
+    <Item category="Hotspot" 
+          title="Region" 
+          path="Data/Objects/triggerkit/trigger_hotspot.xml" 
+          thumbnail="Data/UI/spawner/thumbs/Hotspot/sign_icon.png" />
+
+    <LevelHookFile>Data/Scripts/triggerkit/triggerkit.as</LevelHookFile>
+</Mod>
