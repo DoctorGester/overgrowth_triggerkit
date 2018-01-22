@@ -11,5 +11,6 @@ namespace Bytecode {
     class OP {
         OpType type;
         int a;
+        int b;
     }
 }

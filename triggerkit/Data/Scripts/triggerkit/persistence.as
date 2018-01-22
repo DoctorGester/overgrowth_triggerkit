@@ -1,269 +1,217 @@
-namespace Persistence {
-    const string PARAM_NAME = "TriggerKit/Triggers";
+const string LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME = "TriggerKit/Triggers";
 
-    string StatementTypeToString(ParseTree::StatementType type) {
-        switch(type) {
-            case STATEMENT_TYPE_DECLARATION: return "STATEMENT_TYPE_DECLARATION";
-            case STATEMENT_TYPE_ASSIGNMENT: return "STATEMENT_TYPE_ASSIGNMENT";
-            case STATEMENT_TYPE_FOR_LOOP: return "STATEMENT_TYPE_FOR_LOOP";
-            case STATEMENT_TYPE_REPEAT_LOOP: return "STATEMENT_TYPE_REPEAT_LOOP";
-            case STATEMENT_TYPE_CONDITION: return "STATEMENT_TYPE_CONDITION";
-            case STATEMENT_TYPE_VARIABLE: return "STATEMENT_TYPE_VARIABLE";
-            case STATEMENT_TYPE_LITERAL: return "STATEMENT_TYPE_LITERAL";
-            case STATEMENT_TYPE_BI_FUNCTION: return "STATEMENT_TYPE_BI_FUNCTION";
-            case STATEMENT_TYPE_FUNCTION_CALL: return "STATEMENT_TYPE_FUNCTION_CALL";
-        }
+string serialize_triggers_into_string(array<Trigger@>@ triggers) {
+    array<string> triggers_as_text;
 
-        return "<none>";
+    for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
+        Trigger@ trigger = state.triggers[trigger_index];
+        array<Expression@>@ code = trigger.content;
+
+        string trigger_metadata = KEYWORD_TRIGGER + " " + serializeable_string(trigger.name) + "\n" + serializeable_string(trigger.description);
+        string trigger_as_text = join(array<string> = {
+            KEYWORD_TRIGGER + " " + serializeable_string(trigger.name),
+            KEYWORD_DESCRIPTION + " " + serializeable_string(trigger.description),
+            KEYWORD_CODE + " " + serialize_expression_block(code, "")
+        }, "\n");
+
+        triggers_as_text.insertLast(trigger_as_text);
     }
 
-    JSONValue LiteralTypeToJSON(LiteralType@ type) {
-        JSONValue result;
-        result["basic"] = JSONValue(BasicTypeToString(type.basic));
+    return join(triggers_as_text, "\n\n"); 
+}
 
-        if (type.returnType !is null) {
-            result["returnType"] = JSONValue(LiteralTypeToJSON(type.returnType));
-        }
+array<Trigger@> parse_triggers_from_string(string from_text) {
+    Parser_State state;
+    state.words = split_into_words_and_quoted_pieces(from_text);
 
-        if (type.parameters.length() > 0) {
-            result["parameters"] = JSONValue();
+    array<Trigger@> triggers;
+    Trigger@ current_trigger;
 
-            for (uint i = 0; i < type.parameters.length(); i++) {
-                result["parameters"][i] = LiteralTypeToJSON(type.parameters[i]);
+    while (!has_finished_parsing(state)) {
+        string word = parser_next_word(state);
+
+        if (word == KEYWORD_TRIGGER) {
+            @current_trigger = Trigger(parser_next_word(state));
+        } else {
+            assert(current_trigger !is null);
+
+            if (word == KEYWORD_DESCRIPTION) {
+                current_trigger.description = parser_next_word(state);
+            } else if (word == KEYWORD_CODE) {
+                parse_words_into_expression_array(state, current_trigger.content);
+                triggers.insertLast(current_trigger);
             }
         }
-
-        return result;
     }
 
-    ParseTree::StatementType StringToStatementType(string str) {
-        for (int i = 0; i < STATEMENT_TYPE_LAST; i++) {
-            if (StatementTypeToString(StatementType(i)) == str) {
-                return StatementType(i);
-            }
-        }
+    return triggers;
+}
 
-        return STATEMENT_TYPE_LAST;
-    } 
+void save_trigger_state_into_level_params(Trigger_Kit_State@ state) {
+    ScriptParams@ params = level.GetScriptParams();
 
-    LiteralType@ JSONToLiteralType(JSONValue value) {
-        LiteralType result(StringToBasicType(value["basic"].asString()));
-
-        if (value.isMember("parameters")) {
-            for (uint i = 0; i < value["parameters"].size(); i++) {
-                result.parameters.insertLast(JSONToLiteralType(value["parameters"][i]));
-            }
-        }
-
-        if (value.isMember("returnType")) {
-            @result.returnType = JSONToLiteralType(value["returnType"]);
-        }
-
-        return result;
+    if (params.HasParam(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME)) {
+        params.Remove(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME);
     }
 
-    JSONValue ToJSON(ParseTree::Statement@ statement) {
-        JSONValue value;
+    params.AddString(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME, serialize_triggers_into_string(state.triggers));
+}
 
-        value["type"] = JSONValue(StatementTypeToString(statement.type));
+Trigger_Kit_State@ load_trigger_state_from_level_params() {
+    Trigger_Kit_State state;
 
-        switch (statement.type) {
-            case STATEMENT_TYPE_DECLARATION:
-            case STATEMENT_TYPE_ASSIGNMENT:
-            case STATEMENT_TYPE_VARIABLE:
-            case STATEMENT_TYPE_FUNCTION_CALL:
-            case STATEMENT_TYPE_BI_FUNCTION:
-                value["name"] = JSONValue(statement.name);
-                break;
-        }
+    ScriptParams@ params = level.GetScriptParams();
 
-        switch (statement.type) {
-            case STATEMENT_TYPE_DECLARATION:
-            case STATEMENT_TYPE_LITERAL:
-                value["literalType"] = JSONValue(LiteralTypeToJSON(statement.literalType));
-                break;
-        }
+    if (params.HasParam(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME)) {
+        string text = params.GetString(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME);
 
-        switch (statement.type) {
-            case STATEMENT_TYPE_FOR_LOOP:
-            case STATEMENT_TYPE_REPEAT_LOOP:
-            case STATEMENT_TYPE_BI_FUNCTION:
-            case STATEMENT_TYPE_FUNCTION_CALL:
-            case STATEMENT_TYPE_CONDITION:
-                value["statements"] = FillStatements(statement.statements);
-                break;
-        }
-
-        switch (statement.type) {
-            case STATEMENT_TYPE_DECLARATION:
-            case STATEMENT_TYPE_ASSIGNMENT:
-            case STATEMENT_TYPE_CONDITION:
-            case STATEMENT_TYPE_FOR_LOOP:
-            case STATEMENT_TYPE_REPEAT_LOOP:
-                if (statement.value !is null) {
-                    value["value"] = ToJSON(statement.value);
-                }
-                
-                break;
-        }
-
-        switch (statement.type) {
-            case STATEMENT_TYPE_FOR_LOOP:
-                if (statement.pre !is null) {
-                    value["pre"] = ToJSON(statement.pre);
-                }
-
-                if (statement.post !is null) {
-                    value["post"] = ToJSON(statement.post);
-                }
-
-                break;
-
-            case STATEMENT_TYPE_CONDITION:
-                if (statement.elseStatements !is null) {
-                    value["elseStatements"] = FillStatements(statement.elseStatements);
-                }
-
-                break;
-
-            case STATEMENT_TYPE_LITERAL:
-                value["literalValue"] = LiteralValueToJSON(statement);
-                break;
-        }
-
-        return value;
+        state.triggers = parse_triggers_from_string(text);
     }
 
-    JSONValue FillStatements(ParseTree::Statement@[] statements) {
-        JSONValue value;
+    return state;
+}
 
-        for (uint i = 0; i < statements.length(); i++) {
-            value[i] = ToJSON(statements[i]);
-        }
-
-        return value;
+string operator_type_to_serializeable_string(Operator_Type operator_type) {
+    switch (operator_type) {
+        case OPERATOR_AND: return "and";
+        case OPERATOR_OR: return "or";
+        case OPERATOR_EQ: return "is";
+        case OPERATOR_GT: return ">";
+        case OPERATOR_LT: return "<";
+        case OPERATOR_ADD: return "+";
+        case OPERATOR_SUB: return "-";
     }
 
-    ParseTree::Statement@[] ReadStatements(JSONValue value) {
-        ParseTree::Statement@[] result;
+    return "undefined";
+}
 
-        for (uint i = 0; i < value.size(); i++) {
-            result.insertLast(FromJSON(value[i]));
-        }
-
-        return result;
+string literal_type_to_serializeable_string(Literal_Type literal_type) {
+    switch (literal_type) {
+        case LITERAL_TYPE_VOID: return "Void";
+        case LITERAL_TYPE_NUMBER: return "Number";
+        case LITERAL_TYPE_STRING: return "String";
+        case LITERAL_TYPE_BOOL: return "Bool";
+        case LITERAL_TYPE_OBJECT: return "Object";
+        case LITERAL_TYPE_ITEM: return "Item";
+        case LITERAL_TYPE_HOTSPOT: return "Hotspot";
+        case LITERAL_TYPE_CHARACTER: return "Character";
+        case LITERAL_TYPE_VECTOR: return "Vector";
+        case LITERAL_TYPE_FUNCTION: return "Function";
+        case LITERAL_TYPE_ARRAY: return "Array";
     }
 
-    ParseTree::Statement@ FromJSON(JSONValue value) {
-        ParseTree::StatementType type = StringToStatementType(value["type"].asString());
-        ParseTree::Statement statement(type);
+    return "unknown";
+}
 
-        switch (type) {
-            case STATEMENT_TYPE_DECLARATION:
-            case STATEMENT_TYPE_ASSIGNMENT:
-            case STATEMENT_TYPE_VARIABLE:
-            case STATEMENT_TYPE_FUNCTION_CALL:
-            case STATEMENT_TYPE_BI_FUNCTION:
-                statement.name = value["name"].asString();
-                break;
+string literal_to_serializeable_string(Expression@ literal) {
+    switch (literal.literal_type) {
+        case LITERAL_TYPE_NUMBER: return literal.literal_value.number_value + "";
+        case LITERAL_TYPE_STRING: return serializeable_string(literal.literal_value.string_value);
+
+        default: {
+            Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal.literal_type));
         }
-
-        switch (statement.type) {
-            case STATEMENT_TYPE_DECLARATION:
-            case STATEMENT_TYPE_LITERAL:
-                @statement.literalType = JSONToLiteralType(value["literalType"]);
-                break;
-        }
-
-        switch (statement.type) {
-            case STATEMENT_TYPE_FOR_LOOP:
-            case STATEMENT_TYPE_REPEAT_LOOP:
-            case STATEMENT_TYPE_BI_FUNCTION:
-            case STATEMENT_TYPE_FUNCTION_CALL:
-            case STATEMENT_TYPE_CONDITION:
-                statement.statements = ReadStatements(value["statements"]);
-                break;
-        }
-
-        switch (statement.type) {
-            case STATEMENT_TYPE_DECLARATION:
-            case STATEMENT_TYPE_ASSIGNMENT:
-            case STATEMENT_TYPE_CONDITION:
-            case STATEMENT_TYPE_FOR_LOOP:
-            case STATEMENT_TYPE_REPEAT_LOOP:
-                if (value.isMember("value")) {
-                    @statement.value = FromJSON(value["value"]);
-                }
-                
-                break;
-        }
-
-        switch (statement.type) {
-            case STATEMENT_TYPE_FOR_LOOP:
-                if (value.isMember("pre")) {
-                    @statement.pre = FromJSON(value["pre"]);
-                }
-
-                if (value.isMember("post")) {
-                    @statement.post = FromJSON(value["post"]);
-                }
-
-                break;
-
-            case STATEMENT_TYPE_CONDITION:
-                if (value.isMember("elseStatements")) {
-                    statement.elseStatements = ReadStatements(value["elseStatements"]);
-                }
-
-                break;
-
-            case STATEMENT_TYPE_LITERAL:
-                LiteralValueFromJSON(statement, value["literalValue"]);
-                break;
-        }
-
-        return statement;
     }
 
-    void Save(Trigger@[] triggers) {
-        JSON json;
+    return "not_implemented";
+}
 
-        json.getRoot()["triggers"] = JSONValue();
+string serializeable_string(string text) {
+    const uint8 double_quote = "\""[0];
 
-        for (uint i = 0; i < triggers.length(); i++) {
-            auto tr = JSONValue();
-            tr["name"] = JSONValue(triggers[i].name);
-            tr["description"] = JSONValue(triggers[i].description);
-            tr["statement"] = ToJSON(triggers[i].triggerFunction);
-            json.getRoot()["triggers"][i] = tr;
+    for (uint index = 0; index < text.length(); index++) {
+        if (text[index] == double_quote) {
+            text.insert(index, "\\");
+            index++;
         }
-        
-        auto params = level.GetScriptParams();
-
-        if (params.HasParam(PARAM_NAME)) {
-            params.Remove(PARAM_NAME);
-        }
-
-        params.AddJSON(PARAM_NAME, json);
     }
 
-    Trigger@[] Load() {
-        Trigger@[] result;
+    return "\"" + text + "\""; 
+}
 
-        if (level.GetScriptParams().HasParam(PARAM_NAME)) {
-            JSON json = level.GetScriptParams().GetJSON(PARAM_NAME);
+string serialize_expression_block(array<Expression@>@ block_body, string indent, bool multi_line = true) {
+    string block_indent = multi_line ? indent + "    " : "";
+    string result;
+    string line_break = multi_line ? "\n" : " ";
 
-            auto root = json.getRoot()["triggers"];
+    result += KEYWORD_START_BLOCK + line_break;
 
-            for (uint i = 0; i < root.size(); i++) {
-                Trigger tr(root[i]["name"].asString());
-                tr.description = root[i]["description"].asString();
-                @tr.triggerFunction = FromJSON(root[i]["statement"]);
+    for (uint expression_index = 0; expression_index < block_body.length(); expression_index++) {
+        result += serialize_expression_to_string(block_body[expression_index], block_indent, true) + line_break;
+    }
 
-                result.insertLast(tr);
-            }            
+    result += (multi_line ? indent : "") + KEYWORD_END_BLOCK;
+
+    return result;
+}
+
+string serialize_expression_to_string(Expression@ expression, string indent, bool from_block = false) {
+    string real_indent = from_block ? indent : "";
+
+    if (expression is null) {
+        return "not_implemented (n)";
+    }
+
+    switch (expression.type) {
+        case EXPRESSION_OPERATOR: {
+            return join(array<string> = {
+                KEYWORD_OPERATOR,
+                operator_type_to_ui_string(expression.operator_type),
+                serialize_expression_to_string(expression.left_operand, indent),
+                serialize_expression_to_string(expression.right_operand, indent)
+            }, " ");
         }
 
-        return result;
+        case EXPRESSION_DECLARATION: {
+            return real_indent + join(array<string> = {
+                KEYWORD_DECLARE,
+                literal_type_to_serializeable_string(expression.literal_type),
+                serializeable_string(expression.identifier_name),
+                serialize_expression_to_string(expression.value_expression, indent)
+            }, " ");
+        }
+            
+        case EXPRESSION_ASSIGNMENT: {
+            return real_indent + join(array<string> = {
+                KEYWORD_ASSIGN,
+                serializeable_string(expression.identifier_name),
+                serialize_expression_to_string(expression.value_expression, indent)
+            }, " ");
+        }
+
+        case EXPRESSION_IDENTIFIER: return KEYWORD_IDENTIFIER + " " + serializeable_string(expression.identifier_name);
+        case EXPRESSION_LITERAL: {
+            return join(array<string> = {
+                KEYWORD_LITERAL,
+                literal_type_to_serializeable_string(expression.literal_type),
+                literal_to_serializeable_string(expression)
+            }, " ");
+        }
+
+        case EXPRESSION_NATIVE_CALL: {
+            return real_indent + join(array<string> = {
+                KEYWORD_CALL,
+                expression.identifier_name,
+                serialize_expression_block(expression.arguments, indent, false)
+            }, " ");
+        }
+
+        case EXPRESSION_REPEAT: {
+            return real_indent + join(array<string> = {
+                KEYWORD_REPEAT,
+                serialize_expression_to_string(expression.value_expression, indent),
+                serialize_expression_block(expression.block_body, indent)
+            }, " ");
+        }
+
+        case EXPRESSION_IF: {
+            return real_indent + join(array<string> = {
+                KEYWORD_IF,
+                serialize_expression_to_string(expression.value_expression, indent),
+                serialize_expression_block(expression.block_body, indent)
+            }, " ") + "\n" + real_indent + KEYWORD_ELSE + " " + serialize_expression_block(expression.else_block_body, indent);
+        }
     }
+
+    return "not_implemented";
 }
