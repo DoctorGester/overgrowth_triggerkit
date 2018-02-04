@@ -104,8 +104,6 @@ class Native_Call_Context {
     }
 }
 
-funcdef void Native_Function_Executor(Native_Call_Context@ context);
-
 Virtual_Machine@ make_vm() {
     Virtual_Machine vm;
 
@@ -119,6 +117,21 @@ Thread@ make_thread(Virtual_Machine@ vm) {
     thread.stack.resize(MAX_STACK_SIZE);
 
     return thread;
+}
+
+void set_thread_up_from_translation_context(Thread@ thread, Translation_Context@ translation_context) {
+    // TODO temporary code reserving space for locals
+    for (uint i = 0; i < translation_context.local_variable_index; i++) {
+        thread.code.insertAt(0, make_instruction(INSTRUCTION_TYPE_CONST_0));
+    }
+
+    for (uint instruction_index = 0; instruction_index < translation_context.code.length(); instruction_index++) {
+        thread.code.insertLast(translation_context.code[instruction_index]);
+    }
+
+    @thread.native_functions = translation_context.native_functions;
+    @thread.constant_pool = translation_context.constants;
+    thread.stack_offset = translation_context.local_variable_index;
 }
 
 string instruction_to_string(Instruction@ instruction) {

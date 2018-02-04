@@ -1,5 +1,11 @@
 funcdef bool Function_Predicate(Function_Description@ f);
 
+namespace icons {
+    TextureAssetRef action_variable = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-SetVariables.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_logical = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Logical.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_other = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Nothing.png", TextureLoadFlags_NoMipmap);
+}
+
 class Trigger {
     string name;
     string description;
@@ -11,76 +17,45 @@ class Trigger {
     }
 }
 
-class Function_Description {
-    Literal_Type type;
-    string prettyName;
-    string format;
-    string name;
-    bool isDefaultEvent;
-    bool isOperator;
-
-    Function_Description(){}
-
-    Function_Description(Literal_Type type, string name, string prettyName, string format, bool isDefaultEvent, bool isOperator) {
-        this.type = type;
-        this.name = name;
-        this.prettyName = prettyName;
-        this.format = format;
-        this.isDefaultEvent = isDefaultEvent;
-        this.isOperator = isOperator;
-    }
-
-    int opCmp(Function_Description@ description) {
-        return prettyName.opCmp(description.name);
-    }
-}
-
 class Trigger_Kit_State {
     array<Expression@> edited_expressions;
-    array<Function_Description> native_functions;
+    array<Function_Description@> native_functions;
 
     int current_stack_depth = 0;
     int selected_action_category = 0;
     int selected_trigger;
 
     array<Trigger@> triggers;
+}
 
-
-    void Persist() {
-        // Persistence::Save(triggers);
+// TODO unused
+Trigger@ get_current_selected_trigger() {
+    if (uint(state.selected_trigger) >= state.triggers.length()) {
+        return null;
     }
 
-    Function_Description@[] filter_native_event_handlers() {
-        return filter_native_functions_by_predicate(function(f) {
-            return f.isDefaultEvent;
-        });
-    }
+    return state.triggers[uint(state.selected_trigger)];
+}
 
-    array<Function_Description@> filter_native_functions_by_predicate(Function_Predicate@ predicate) {
-        array<Function_Description@> filter_result;
+array<Function_Description@> filter_native_functions_by_predicate(Function_Predicate@ predicate) {
+    array<Function_Description@> filter_result;
 
-        for (uint index = 0; index < native_functions.length(); index++) {
-            Function_Description@ function_description = native_functions[index];
+    for (uint index = 0; index < state.native_functions.length(); index++) {
+        Function_Description@ function_description = state.native_functions[index];
 
-            if (predicate(function_description)) {
-                filter_result.insertLast(function_description);
-            }
+        if (predicate(function_description)) {
+            filter_result.insertLast(function_description);
         }
-
-        return filter_result;
     }
 
-    void add_native_function_to_library(Function_Description description) {
-        native_functions.insertLast(description);
-    }
+    return filter_result;
+}
 
-    Trigger@ get_current_selected_trigger() {
-        if (uint(selected_trigger) >= triggers.length()) {
-            return null;
-        }
+Trigger_Kit_State@ make_trigger_kit_state() {
+    Trigger_Kit_State state;
+    state.native_functions = populate_native_functions(null);  // TODO dirty
 
-        return triggers[uint(selected_trigger)];
-    }
+    return state;
 }
 
 string find_vacant_trigger_name() {
@@ -131,7 +106,7 @@ Trigger@ draw_trigger_list(float window_height) {
         state.selected_trigger = state.triggers.length();
         state.triggers.insertLast(trigger);
 
-        state.Persist();
+        //state.Persist();
     }
 
     ImGui_SameLine();
@@ -140,7 +115,7 @@ Trigger@ draw_trigger_list(float window_height) {
         state.triggers.removeAt(uint(state.selected_trigger));
         state.selected_trigger = max(state.selected_trigger - 1, 0);
 
-        state.Persist();
+        //state.Persist();
     }
 
     ImGui_SameLine();
@@ -153,7 +128,8 @@ Trigger@ draw_trigger_list(float window_height) {
     ImGui_SameLine();
 
     if (ImGui_Button("VM Reload")) {
-        Init("");
+        @vm = make_vm();
+        @state = load_trigger_state_from_level_params();
     }
 
     ImGui_EndGroup();
@@ -217,7 +193,7 @@ void post_expression_text(string text) {
 void draw_expressions_in_a_tree_node(string title, array<Expression@>@ expressions, uint& expression_index, uint& popup_stack_level) {
     expression_index++;
     if (ImGui_TreeNodeEx(title + "###expression_block_" + expression_index, ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
-        draw_expressions_(expressions, expression_index, popup_stack_level);
+        draw_expressions(expressions, expression_index, popup_stack_level);
         ImGui_TreePop();
     }
 }
@@ -266,10 +242,30 @@ string literal_type_to_ui_string(Literal_Type literal_type) {
     return "unknown";
 }
 
-string literal_to_string(Expression@ literal) {
+const string default_color = "\x1BFFFFFFFF";
+const string keyword_color = "\x1BFFD800FF";
+const string type_color = "\x1BB6FF00FF";
+const string literal_color = "\x1BFF7FEDFF";
+const string string_color = "\x1BFFB27FFF";
+const string identifier_color = "\x1BC0C0C0FF";
+
+string colored_keyword(const string keyword) {
+    return keyword_color + keyword + default_color;
+}
+
+string colored_literal_type(Literal_Type literal_type) {
+    return type_color + literal_type_to_ui_string(literal_type) + default_color;
+}
+
+string colored_identifier(string identifier_name) {
+    return identifier_color + identifier_name + default_color;
+}
+
+string literal_to_ui_string(Expression@ literal) {
     switch (literal.literal_type) {
-        case LITERAL_TYPE_NUMBER: return literal.literal_value.number_value + "";
-        case LITERAL_TYPE_STRING: return "\"" + literal.literal_value.string_value + "\"";
+
+        case LITERAL_TYPE_NUMBER: return literal_color + literal.literal_value.number_value + default_color;
+        case LITERAL_TYPE_STRING: return string_color + "\"" + literal.literal_value.string_value + "\"" + default_color;
 
         default: {
             Log(error, "Unsupported literal type " + literal_type_to_ui_string(literal.literal_type));
@@ -279,7 +275,7 @@ string literal_to_string(Expression@ literal) {
     return "not_implemented";
 }
 
-string native_call_to_string(Expression@ expression) {
+string function_call_to_string_simple(Expression@ expression) {
     array<string> arguments;
     arguments.resize(expression.arguments.length());
 
@@ -287,50 +283,56 @@ string native_call_to_string(Expression@ expression) {
         arguments[argument_index] = expression_to_string(expression.arguments[argument_index]);
     }
 
-    /*
-    auto type = expression.FindFittingFunction(context);
-    auto sts = expression.expressions;
-    array<string> args;
+    return expression.identifier_name + "(" + join(arguments, ", ") + ")";
+}
 
-    auto description = state.FindFunctionDescription(expression.name, type);
+string native_call_to_string(Expression@ expression) {
+    Function_Description@ function_description;
 
-    if (description !is null) {
-        auto format = description.format;
-
-        int index = 0;
-        int currentArgument = 0;
-        string result = "";
-
-        while (true) {
-            int newIndex = format.findFirst("%s", index);
-
-            if (newIndex != -1) {
-                auto arg = "(" + expression_to_string(sts[currentArgument], context) + ")";
-                result += format.substr(index, newIndex - index) + arg;
-                currentArgument++;
-            } else {
-                if (index == 0) {
-                    result = format;
-                } else {
-                    result += format.substr(index);
-                }
-
-                break;
-            }
-
-            index = newIndex + 2;
-        }
-
-        return result;
-    } else {
-        for (uint i = 0; i < sts.length(); i++) {
-            args.insertLast(expression_to_string(sts[i], context));
+    for (uint function_index = 0; function_index < state.native_functions.length(); function_index++) {
+        if (state.native_functions[function_index].function_name == expression.identifier_name) {
+            @function_description = state.native_functions[function_index];
+            break;
         }
     }
 
-    return expression.name + "(" + join(args, ", ") + ")";*/
+    if (function_description is null) {
+        return function_call_to_string_simple(expression);
+    }
 
-    return expression.identifier_name + "(" + join(arguments, ", ") + ")";
+    int character_index = 0;
+    int current_argument_index = 0;
+    
+    string result = "";
+    string format = function_description.format;
+
+    while (true) {
+        int new_character_index = format.findFirst("%s", character_index);
+
+        if (new_character_index != -1) {
+            string argument_as_string = expression_to_string(expression.arguments[current_argument_index]);
+
+            if (expression.arguments[current_argument_index].type != EXPRESSION_LITERAL) {
+                argument_as_string = "(" + argument_as_string + ")";
+            }
+
+            result += format.substr(character_index, new_character_index - character_index) + argument_as_string;
+            current_argument_index++;
+        } else {
+            if (character_index == 0) {
+                result = format;
+            } else {
+                result += format.substr(character_index);
+            }
+
+            break;
+        }
+
+        character_index = new_character_index + 2;
+    }
+
+    return result;
+    //return expression.identifier_name + "(" + join(arguments, ", ") + ")";
 }
 
 string expression_to_string(Expression@ expression) {
@@ -351,8 +353,8 @@ string expression_to_string(Expression@ expression) {
 
         case EXPRESSION_DECLARATION: {
             return join(array<string> = {
-                literal_type_to_ui_string(expression.literal_type),
-                expression.identifier_name,
+                colored_literal_type(expression.literal_type),
+                colored_identifier(expression.identifier_name),
                 "=",
                 expression_to_string(expression.value_expression)
             }, " ");
@@ -360,29 +362,116 @@ string expression_to_string(Expression@ expression) {
             
         case EXPRESSION_ASSIGNMENT:
             return join(array<string> = {
-                "set",
-                expression.identifier_name,
+                colored_keyword("Set"),
+                colored_identifier(expression.identifier_name),
                 "=",
                 expression_to_string(expression.value_expression)
             }, " ");
-        case EXPRESSION_IDENTIFIER: return expression.identifier_name;
-        case EXPRESSION_LITERAL: return literal_to_string(expression);
+        case EXPRESSION_IDENTIFIER: return colored_identifier(expression.identifier_name);
+        case EXPRESSION_LITERAL: return literal_to_ui_string(expression);
         case EXPRESSION_NATIVE_CALL: return native_call_to_string(expression);
         case EXPRESSION_REPEAT: {
             return join(array<string> = {
-                "Repeat",
+                colored_keyword("Repeat"),
                 expression_to_string(expression.value_expression),
                 "times"
             }, " ");
         }
 
-        case EXPRESSION_IF: return "If " + expression_to_string(expression.value_expression) + " do";
+        case EXPRESSION_IF: return colored_keyword("If ") + expression_to_string(expression.value_expression);
     }
 
     return "not_implemented (" + expression.type + ")";
 }
 
-void draw_editable_expression(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
+void draw_editor_popup_footer(uint& popup_stack_level) {
+    ImGui_NewLine();
+    ImGui_Separator();
+    ImGui_NewLine();
+
+    if (ImGui_Button("close###" + popup_stack_level)) {
+        state.edited_expressions.removeLast();
+        ImGui_CloseCurrentPopup();
+        popup_stack_level--;
+    }
+}
+
+void draw_editor_popup_function_selector() {
+    int selected_function = 0;
+    array<string> function_names;
+
+
+    for (uint function_index = 0; function_index < state.native_functions.length(); function_index++) {
+        function_names.insertLast(state.native_functions[function_index].pretty_name);
+    }
+
+    ImGui_Combo("##function_selector", selected_function, function_names);
+}
+
+void draw_statement_editor_popup(uint& expression_index, uint& popup_stack_level) {
+    ImGui_Text("Action type");
+
+    draw_editor_popup_function_selector();
+
+    ImGui_NewLine();
+    ImGui_Separator();
+    ImGui_NewLine();
+
+    ImGui_Text("Action text");
+    draw_expression_as_broken_into_pieces(state.edited_expressions[popup_stack_level - 1], expression_index, popup_stack_level);
+
+    draw_editor_popup_footer(popup_stack_level);
+
+    ImGui_EndPopup();
+}
+
+void draw_expression_editor_popup(uint& expression_index, uint& popup_stack_level) {
+    array<string> variable_names = { "var1" };
+    int selected = 0;
+
+    const int offset = 200;
+
+    Expression@ expression = state.edited_expressions[popup_stack_level - 1];
+
+    if (ImGui_RadioButton("Variable", expression.type == EXPRESSION_IDENTIFIER)) {
+        expression.type = EXPRESSION_IDENTIFIER;
+    }
+
+    ImGui_SameLine();
+    ImGui_SetCursorPosX(offset);
+    ImGui_Combo("##variable_selector", selected, variable_names);
+
+    bool is_a_function_call = expression.type == EXPRESSION_NATIVE_CALL;
+    bool is_an_operator = expression.type == EXPRESSION_OPERATOR;
+
+    if (ImGui_RadioButton("Function", is_a_function_call || is_an_operator)) {
+
+    }
+
+    ImGui_SameLine();
+    ImGui_SetCursorPosX(offset);
+    draw_editor_popup_function_selector();
+
+    if (is_a_function_call || is_an_operator) {
+        ImGui_SetCursorPosX(offset);
+        draw_expression_as_broken_into_pieces(expression, expression_index, popup_stack_level);
+    }
+
+    if (ImGui_RadioButton("Value", expression.type == EXPRESSION_LITERAL)) {
+        expression.type = EXPRESSION_LITERAL;
+    }
+
+    ImGui_SameLine();
+    ImGui_SetCursorPosX(offset);
+
+    draw_editable_literal(state.edited_expressions[popup_stack_level - 1], expression_index);
+    
+    draw_editor_popup_footer(popup_stack_level);
+
+    ImGui_EndPopup();
+}
+
+void draw_editable_expression(Expression@ expression, uint& expression_index, uint& popup_stack_level, bool parent_is_a_code_block = false) {
     if (ImGui_Button(expression_to_string(expression) + "##" + expression_index)) {
         ImGui_OpenPopup("Edit###Popup" + popup_stack_level);
         state.edited_expressions.insertLast(expression);
@@ -391,15 +480,12 @@ void draw_editable_expression(Expression@ expression, uint& expression_index, ui
     ImGui_SetNextWindowPos(ImGui_GetWindowPos() + vec2(20, 20), ImGuiSetCond_Appearing);
     if (ImGui_BeginPopupModal("Edit###Popup" + popup_stack_level, ImGuiWindowFlags_AlwaysAutoResize)) {
         popup_stack_level++;
-        draw_expression_as_broken_into_pieces(state.edited_expressions[popup_stack_level - 1], expression_index, popup_stack_level);
-        // draw_editable_expression(make_native_call_expr("dog"), expression_index, popup_stack_level);
 
-        if (ImGui_Button("close")) {
-            state.edited_expressions.removeLast();
-            ImGui_CloseCurrentPopup();
+        if (parent_is_a_code_block) {
+            draw_statement_editor_popup(expression_index, popup_stack_level);
+        } else {
+            draw_expression_editor_popup(expression_index, popup_stack_level);
         }
-
-        ImGui_EndPopup();
     }
 }
 
@@ -408,7 +494,7 @@ void draw_editable_literal(Expression@ expression, int index) {
 
     switch (expression.literal_type) {
         case LITERAL_TYPE_NUMBER:
-            ImGui_InputFloat("###LiteralFloat" + index, literal_value.number_value, 2);
+            ImGui_InputFloat("###LiteralFloat" + index, literal_value.number_value, 1);
             break;
         case LITERAL_TYPE_STRING:
             ImGui_SetTextBuf(literal_value.string_value);
@@ -466,7 +552,7 @@ void draw_type_selector(Expression@ expression, string text_label, Literal_Type 
             selected = index;
         }
 
-        type_names.insertLast(literal_type_to_ui_string(all_types[index]));
+        type_names.insertLast(colored_literal_type(all_types[index]));
     }
 
     if (ImGui_Combo(text_label, selected, type_names)) {
@@ -480,7 +566,7 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
             draw_editable_literal(expression, expression_index);
-            //ImGui_Button(literal_to_string(expression));
+            //ImGui_Button(literal_to_ui_string(expression));
             break;
         }
         
@@ -513,7 +599,7 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
         }
 
         case EXPRESSION_DECLARATION: {
-            pre_expression_text("variable of type");
+            pre_expression_text(colored_keyword("Declare"));
             draw_type_selector(expression, "", Literal_Type(0));
             draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
             pre_expression_text("=");
@@ -530,7 +616,6 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
         }
 
         case EXPRESSION_NATIVE_CALL: {
-            pre_expression_text("call");
             draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
 
             pre_expression_text("(");
@@ -551,98 +636,86 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
     }
 }
 
-void draw_expression_with_block_body_if_present(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
-    draw_editable_expression(expression, expression_index, popup_stack_level);
+void draw_expression_image(Expression@ expression) {
+    ImGui_SetCursorPosY(ImGui_GetCursorPosY() + 1);
 
     switch (expression.type) {
         case EXPRESSION_IF: {
-            draw_expressions_in_a_tree_node("Then", expression.block_body, expression_index, popup_stack_level);
-            draw_expressions_in_a_tree_node("Else", expression.else_block_body, expression_index, popup_stack_level);
+            ImGui_Image(icons::action_logical, vec2(16, 16));
+            break;
+        }
+        case EXPRESSION_REPEAT: {
+            ImGui_Image(icons::action_logical, vec2(16, 16));
             break;
         }
 
-        case EXPRESSION_REPEAT: {
-            draw_expressions_in_a_tree_node("Actions", expression.block_body, expression_index, popup_stack_level);
+        case EXPRESSION_NATIVE_CALL: {
+            ImGui_Image(icons::action_other, vec2(16, 16));
             break;
+        }
+
+        default: {
+            ImGui_Image(icons::action_variable, vec2(16, 16));
         }
     }
 
-    expression_index++;
-}
-
-void draw_top_level_expression_with_block_body_if_present(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
-    ImGui_Button("X");
     ImGui_SameLine();
 
-    draw_expression_with_block_body_if_present(expression, expression_index, popup_stack_level);
+    ImGui_SetCursorPosY(ImGui_GetCursorPosY() - 1);
 }
 
-void draw_expressions_(array<Expression@>@ expressions, uint& expression_index, uint& popup_stack_level) {
-    for (uint index = 0; index < expressions.length(); index++) {
-        draw_top_level_expression_with_block_body_if_present(expressions[index], expression_index, popup_stack_level);
+void draw_expressions(array<Expression@>@ expressions, uint& expression_index, uint& popup_stack_level) {
+    if (expressions.length() == 0) {
+        if (ImGui_Button("+##bluz")) {
+            expressions.insertLast(make_native_call_expr("dingo"));
+            return;
+        }
     }
-}
 
-void draw_expressions(array<Expression@>@ expressions) {
-    uint expression_index = 0;
-    uint stack_depth = 0;
-    array<array<Expression@>@> expression_stack;
-    array<uint> iteration_index;
+    for (int index = 0; uint(index) < expressions.length(); index++) {
+        Expression@ expression = expressions[uint(index)];
 
-    expression_stack.insertLast(expressions);
-    iteration_index.insertLast(0);
+        vec2 cursor_start_pos = ImGui_GetCursorScreenPos() ;
 
-    ImGui_TreeNodeEx("Actions###StatementBlock" + expression_index, ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen);
+        draw_expression_image(expression);
+        draw_editable_expression(expression, expression_index, popup_stack_level, true);
 
-    Log(info, "---");
+        vec2 hover_min = cursor_start_pos;
+        vec2 hover_max = cursor_start_pos + vec2(400, 18);
 
-    while (true) {
-        uint current_iteration_index = iteration_index[stack_depth];
-        array<Expression@>@ current_expressions = expression_stack[stack_depth];
-        Expression@ current_expression = current_expressions[current_iteration_index];
+        if (ImGui_IsMouseHoveringRect(hover_min, hover_max)) {
+            float x_position_snapped = int((ImGui_GetMousePos().x - ImGui_GetWindowPos().x) / 64) * 64;
 
-        // Log(info, current_iteration_index + " " + current_expressions.length() + " " + current_expression.type);
-
-        expression_index++;
-
-        if (current_expression.type == EXPRESSION_REPEAT || current_expression.type == EXPRESSION_IF) {
-            // Log(info, "go inside");
-            iteration_index[stack_depth]++;
-
-            if (ImGui_TreeNodeEx("Actions###StatementBlock" + expression_index, ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
-                expression_stack.insertLast(current_expression.block_body);
-                iteration_index.insertLast(0);
-                stack_depth++;
-            } else {
-                Log(info, "closed pop");
-                ImGui_TreePop();
-            }
+            ImGui_SameLine();
+            // ImGui_SetCursorPosX(x_position_snapped);
             
-            continue;
+            if (ImGui_Button("+")) {
+                expressions.insertAt(uint(index) + 1, make_native_call_expr("dingo"));
+            }
+
+            ImGui_SameLine();
+
+            if (ImGui_Button("X")) {
+                expressions.removeAt(index);
+
+                index--;
+            }
         }
 
-        ImGui_Button("DOG##" + expression_index);
+        switch (expression.type) {
+            case EXPRESSION_IF: {
+                draw_expressions_in_a_tree_node("Then do", expression.block_body, expression_index, popup_stack_level);
+                draw_expressions_in_a_tree_node("Else do", expression.else_block_body, expression_index, popup_stack_level);
+                break;
+            }
 
-        current_iteration_index++;
-        iteration_index[stack_depth] = current_iteration_index;
-
-        while (iteration_index[stack_depth] == expression_stack[stack_depth].length()) {
-            Log(info, "OUT");
-            expression_stack.removeLast();
-            iteration_index.removeLast();
-            stack_depth--;
-
-            ImGui_TreePop();
-
-            if (expression_stack.length() == 0) {
+            case EXPRESSION_REPEAT: {
+                draw_expressions_in_a_tree_node("Actions", expression.block_body, expression_index, popup_stack_level);
                 break;
             }
         }
 
-        if (expression_stack.length() == 0) {
-            break;
-        }
-
+        expression_index++;
     }
 }
 
@@ -673,7 +746,7 @@ void draw_trigger_content(Trigger@ current_trigger) {
     uint expression_index = 0;
     uint popup_stack_level = 0;
 
-    draw_expressions_(current_trigger.content, expression_index, popup_stack_level);
+    draw_expressions(current_trigger.content, expression_index, popup_stack_level);
     //DrawEventSelector(current_trigger.triggerFunction, ctx);
 
     // auto call = current_trigger.triggerFunction;

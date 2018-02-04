@@ -1,17 +1,18 @@
 // Compiler: Native function library, proper native calls
 // Compiler: Types in general, lol
 // Compiler: Compile into multiple targets with the global compilation context
-// Compiler: EXPRESSION_OPERATOR and Operator_Type
+// Compiler: Actual function types, function calls, EXPRESSION_NATIVE_CALL should be just EXPRESSION_FUNCTION_CALL,
+//           the compiler decides what is native and what is not, simple!
 // VM/Compiler: Resize stack dynamically or just figure out maximum stack size and set it to that
 // VM: Exceptions (divide by zero, etc)
 // VM: Array types
-// General: Code persistence
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"
 #include "triggerkit/compiler.as"
 #include "triggerkit/parser.as"
 #include "triggerkit/persistence.as"
+#include "triggerkit/api.as"
 
 
 enum Expression_Type {
@@ -85,13 +86,6 @@ class Expression {
     array<Expression@> block_body;
     array<Expression@> else_block_body;
 }
-
-class Function_Definition {
-
-}
-
-// WE HAVE AN ARRAY FILLING UP SOMEWHERE WHICH IS WHY IT RUNS OUT OF MEMORY AND HOT RELOADING IS SLOW!!!!!!!!!!!!!!!!!!!!!
-// ----------- Bytecode ------------
 
 Virtual_Machine@ vm;
 Trigger_Kit_State@ state;
@@ -266,8 +260,9 @@ void test_simple_code() {
     Log(info, "----");
 
     auto t = GetPerformanceCounter();
-    translate_expressions_into_bytecode_and_set_thread_up(expressions, thread);
-    Log(info, "Translation :: " + get_time_delta_in_ms(t) + "ms");
+    Translation_Context@ context = translate_expressions_into_bytecode(expressions);
+    set_thread_up_from_translation_context(thread, context);
+    Log(info, "Translation :: " + context.expressions_translated + " expressions translated in " + get_time_delta_in_ms(t) + "ms");
 
     Log(info, "Constants");
 
@@ -305,8 +300,10 @@ void ReceiveMessage(string msg) {
     //script.ReceiveMessage(msg);
 }
 
+// TODO remove testing stuff
 string serialized = "";
 string serialized_and_then_deserialized = "";
+bool show_text_output = false;
 
 void DrawGUI() {
     if (EditorModeActive()) {
@@ -338,8 +335,7 @@ void DrawGUI() {
         }
 
         if (ImGui_Button("Compile code")) {
-            Thread thread;
-            translate_expressions_into_bytecode_and_set_thread_up(make_test_expression_array(), thread);
+            translate_expressions_into_bytecode(make_test_expression_array());
         }
 
         if (ImGui_Button("Test string escaping")) {
@@ -393,13 +389,12 @@ void DrawGUI() {
                 ImGui_ListBoxHeader("Code");
 
                 for (uint i = 0; i < thread.code.length(); i++) {
-                    string clr = i == thread.current_instruction ? "##22FF11FF" : "";
+                    string clr = i == thread.current_instruction ? "\x1B22FF11FF" : "";
 
                     ImGui_Text(clr + i + ": " + instruction_to_string(thread.code[i]));
                 }
 
                 ImGui_ListBoxFooter();
-
 
                 ImGui_ListBoxHeader("Stack");
 
@@ -411,19 +406,23 @@ void DrawGUI() {
             }
         }
 
+        ImGui_Checkbox("Show text ouput", show_text_output);
+
         ImGui_End();
 
         draw_trigger_kit();
 
-        ImGui_Begin("text output", ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui_SetTextBuf(serialized);
-        ImGui_InputTextMultiline("###input", ImGuiInputTextFlags_ReadOnly);
-        ImGui_End();
+        if (show_text_output) {
+            ImGui_Begin("text output", ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui_SetTextBuf(serialized);
+            ImGui_InputTextMultiline("###input", ImGuiInputTextFlags_ReadOnly);
+            ImGui_End();
 
-        ImGui_Begin("text output 2", ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui_SetTextBuf(serialized_and_then_deserialized);
-        ImGui_InputTextMultiline("###input", ImGuiInputTextFlags_ReadOnly);
-        ImGui_End();
+            ImGui_Begin("text output 2", ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui_SetTextBuf(serialized_and_then_deserialized);
+            ImGui_InputTextMultiline("###input", ImGuiInputTextFlags_ReadOnly);
+            ImGui_End();
+        }
     }
 }
 
@@ -437,6 +436,14 @@ void Update(int paused) {
             }
         }
     }
+}
+
+void PostScriptReload() {
+    @state = load_trigger_state_from_level_params();
+}
+
+void PreScriptReload() {
+    @state = null;
 }
 
 void SetWindowDimensions(int w, int h)

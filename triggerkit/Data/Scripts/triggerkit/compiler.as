@@ -6,6 +6,9 @@ class Translation_Context {
     uint local_variable_index = 0;
     array<Native_Function_Executor@> native_functions;
     array<Memory_Cell> constants;
+    array<Instruction> code;
+
+    uint expressions_translated = 0;
 }
 
 Memory_Cell@ make_memory_cell(float number_value) {
@@ -89,9 +92,9 @@ void emit_instruction(Instruction@ instruction, array<Instruction>@ target) {
     target.insertLast(instruction);
 }
 
-void emit_block(Translation_Context@ ctx, array<Expression@>@ expressions, array<Instruction>@ target) {
+void emit_block(Translation_Context@ ctx, array<Expression@>@ expressions) {
     for (uint block_expr_index = 0; block_expr_index < expressions.length(); block_expr_index++) {
-        emit_expression_bytecode(ctx, expressions[block_expr_index], target, true);
+        emit_expression_bytecode(ctx, expressions[block_expr_index], true);
     }
 }
 
@@ -128,7 +131,11 @@ Instruction_Type operator_type_to_instruction_type(Operator_Type operator_type) 
     return INSTRUCTION_TYPE_ADD;
 }
 
-void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, array<Instruction>@ target, bool is_parent_a_block = false) {
+void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, bool is_parent_a_block = false) {
+    ctx.expressions_translated++;
+
+    array<Instruction>@ target = ctx.code;
+
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
             // TODO if literal type == double/string then storeconst and load
@@ -172,7 +179,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
         case EXPRESSION_DECLARATION: {
             uint slot = declare_local_variable_and_advance(ctx, expression.identifier_name);
-            emit_expression_bytecode(ctx, expression.value_expression, target); // TODO make this optional?
+            emit_expression_bytecode(ctx, expression.value_expression); // TODO make this optional?
             emit_instruction(make_store_instruction(slot), target);
 
             break;
@@ -181,7 +188,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         case EXPRESSION_ASSIGNMENT: {
             uint slot = find_variable_location(ctx, expression.identifier_name);
 
-            emit_expression_bytecode(ctx, expression.value_expression, target);
+            emit_expression_bytecode(ctx, expression.value_expression);
             emit_instruction(make_store_instruction(slot), target);
 
             break;
@@ -190,11 +197,11 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         case EXPRESSION_OPERATOR: {
             switch (expression.operator_type) {
                 case OPERATOR_OR: {
-                    emit_expression_bytecode(ctx, expression.left_operand, target);
+                    emit_expression_bytecode(ctx, expression.left_operand);
                     emit_instruction(make_instruction(INSTRUCTION_TYPE_EQ_NOT_ZERO), target); // if true
                     uint jmp_into_true_location = emit_placeholder_jmp_if_instruction(target);
 
-                    emit_expression_bytecode(ctx, expression.right_operand, target);
+                    emit_expression_bytecode(ctx, expression.right_operand);
                     emit_instruction(make_instruction(INSTRUCTION_TYPE_EQ_ZERO), target); // if false
                     uint jmp_into_false_location = emit_placeholder_jmp_if_instruction(target);
 
@@ -210,11 +217,11 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                 }
 
                 case OPERATOR_AND: {
-                    emit_expression_bytecode(ctx, expression.left_operand, target);
+                    emit_expression_bytecode(ctx, expression.left_operand);
                     emit_instruction(make_instruction(INSTRUCTION_TYPE_EQ_ZERO), target); // if false
                     uint jmp_into_false_location = emit_placeholder_jmp_if_instruction(target);
 
-                    emit_expression_bytecode(ctx, expression.right_operand, target);
+                    emit_expression_bytecode(ctx, expression.right_operand);
                     emit_instruction(make_instruction(INSTRUCTION_TYPE_EQ_NOT_ZERO), target); // if true
                     uint jmp_into_true_location = emit_placeholder_jmp_if_instruction(target);
 
@@ -230,8 +237,8 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                 }
 
                 default: {
-                    emit_expression_bytecode(ctx, expression.left_operand, target);
-                    emit_expression_bytecode(ctx, expression.right_operand, target);
+                    emit_expression_bytecode(ctx, expression.left_operand);
+                    emit_expression_bytecode(ctx, expression.right_operand);
                     emit_instruction(make_instruction(operator_type_to_instruction_type(expression.operator_type)), target);
                 }
             }
@@ -240,17 +247,17 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         }
 
         case EXPRESSION_IF: {
-            emit_expression_bytecode(ctx, expression.value_expression, target);
+            emit_expression_bytecode(ctx, expression.value_expression);
 
             uint jmp_into_if_location = emit_placeholder_jmp_if_instruction(target);
 
-            emit_block(ctx, expression.else_block_body, target);
+            emit_block(ctx, expression.else_block_body);
 
             uint jmp_over_the_whole_if_location = emit_placeholder_jmp_instruction(target);
 
             target[jmp_into_if_location].int_arg = target.length() - jmp_into_if_location;
 
-            emit_block(ctx, expression.block_body, target);
+            emit_block(ctx, expression.block_body);
 
             target[jmp_over_the_whole_if_location].int_arg = target.length() - jmp_over_the_whole_if_location;
 
@@ -261,7 +268,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             uint function_id = find_or_declare_native_function(ctx, expression.identifier_name);
 
             for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
-                emit_expression_bytecode(ctx, expression.arguments[argument_index], target);
+                emit_expression_bytecode(ctx, expression.arguments[argument_index]);
             }
 
             emit_instruction(make_native_call_instruction(function_id), target);
@@ -276,12 +283,12 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         case EXPRESSION_REPEAT: {
             uint counter_location = get_local_index_and_advance(ctx);
 
-            emit_expression_bytecode(ctx, expression.value_expression, target);
+            emit_expression_bytecode(ctx, expression.value_expression);
             emit_instruction(make_store_instruction(counter_location), target); // save counter
 
             uint repeat_block_start = target.length();
 
-            emit_block(ctx, expression.block_body, target);
+            emit_block(ctx, expression.block_body);
 
             emit_instruction(make_load_instruction(counter_location), target); // load counter
             emit_instruction(make_instruction(INSTRUCTION_TYPE_DEC), target); // counter--
@@ -301,63 +308,13 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
     }
 }
 
-void api_log1(Native_Call_Context@ ctx) {
-    Log(info, "log1");
-}
+Translation_Context@ translate_expressions_into_bytecode(array<Expression@>@ expressions) {
+    Translation_Context translation_context;
+    populate_native_functions(translation_context.api);
 
-void api_log2(Native_Call_Context@ ctx) {
-    Log(info, "log2");
-}
+    emit_block(translation_context, expressions);
 
-void api_wait(Native_Call_Context@ ctx) {
-    ctx.thread_sleep_for(1.0);
-}
-
-void api_print(Native_Call_Context@ ctx) {
-    float value = ctx.take_number();
-
-    Log(info, "print: " + value);
-}
-
-void api_rnd(Native_Call_Context@ ctx) {
-    ctx.return_number(rand());
-}
-
-void api_print_str(Native_Call_Context@ ctx) {
-    string value = ctx.take_string();
-
-    Log(info, "print_str: " + value);
-}
-
-dictionary@ set_up_api_temp() {
-    dictionary api;
-
-    api["log1"] = api_log1;
-    api["log2"] = api_log2;
-    api["wait"] = api_wait;
-    api["rnd"] = api_rnd;
-    api["print"] = api_print;
-    api["print_str"] = api_print_str;
-
-    return api;
-}
-
-void translate_expressions_into_bytecode_and_set_thread_up(array<Expression@>@ expressions, Thread@ thread) {
-    Translation_Context ctx;
-    ctx.api = set_up_api_temp();
-
-    for (uint expr_index = 0; expr_index < expressions.length(); expr_index++) {
-        emit_expression_bytecode(ctx, @expressions[expr_index], thread.code);
-    }
-
-    // TODO temporary code reserving space for locals
-    for (uint i = 0; i < ctx.local_variable_index; i++) {
-        thread.code.insertAt(0, make_instruction(INSTRUCTION_TYPE_CONST_0));
-    }
-
-    @thread.native_functions = ctx.native_functions;
-    @thread.constant_pool = ctx.constants;
-    thread.stack_offset = ctx.local_variable_index;
+    return translation_context;
 }
 
 Instruction@ bool_to_load_const(bool value) {
