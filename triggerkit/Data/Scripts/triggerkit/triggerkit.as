@@ -1,4 +1,7 @@
-// Compiler: Native function library, proper native calls
+// UI: Conditions! You can compose conditions and actions into a single tree before passing them into the compiler
+// UI: Event parameters and event variables
+// UI/Compiler/VM: Global variables window
+// UI/Compiler/VM: User functions, implement wait in userland!
 // Compiler: Types in general, lol
 // Compiler: Compile into multiple targets with the global compilation context
 // Compiler: Actual function types, function calls, EXPRESSION_NATIVE_CALL should be just EXPRESSION_FUNCTION_CALL,
@@ -13,6 +16,7 @@
 #include "triggerkit/parser.as"
 #include "triggerkit/persistence.as"
 #include "triggerkit/api.as"
+#include "triggerkit/shared_definitions.as"
 
 
 enum Expression_Type {
@@ -291,11 +295,13 @@ void Init(string p_level_name) {
     Log(info, "rld");
 }
 
-void ReceiveMessage(string msg) {
+void ReceiveMessage(string message) {
     // Spam
-    if (msg == "tutorial ") {
+    if (message == "tutorial") {
         return;
     }
+
+    try_handle_event_from_message(message);
 
     //script.ReceiveMessage(msg);
 }

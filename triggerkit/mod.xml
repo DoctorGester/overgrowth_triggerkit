@@ -2,7 +2,7 @@
 <Mod>
     <!-- The id can consist of english alphabet or dash "-" -->
     <Id>trigger-kit</Id> 
-    <Name>TriggerKit</Name> 
+    <Name>TriggerKit - Custom Scenario Tool</Name> 
     <Version>1.0.0</Version>
     <Author>DoctorGester</Author>
     <SupportedVersion>*</SupportedVersion>

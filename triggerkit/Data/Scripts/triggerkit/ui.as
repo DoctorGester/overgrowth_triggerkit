@@ -11,6 +11,7 @@ class Trigger {
     string description;
     Expression@ event_definition;
     array<Expression@> content;
+    Event_Type event_type = EVENT_CHARACTER_ENTERS_REGION;
 
     Trigger(string name) {
         this.name = name;
@@ -20,6 +21,7 @@ class Trigger {
 class Trigger_Kit_State {
     array<Expression@> edited_expressions;
     array<Function_Description@> native_functions;
+    array<Event_Definition@> native_events;
 
     int current_stack_depth = 0;
     int selected_action_category = 0;
@@ -53,7 +55,10 @@ array<Function_Description@> filter_native_functions_by_predicate(Function_Predi
 
 Trigger_Kit_State@ make_trigger_kit_state() {
     Trigger_Kit_State state;
-    state.native_functions = populate_native_functions(null);  // TODO dirty
+
+    Api_Builder@ api_builder = build_api();
+    state.native_functions = api_builder.functions;
+    state.native_events = api_builder.events;
 
     return state;
 }
@@ -302,7 +307,7 @@ string native_call_to_string(Expression@ expression) {
 
     int character_index = 0;
     int current_argument_index = 0;
-    
+
     string result = "";
     string format = function_description.format;
 
@@ -399,7 +404,6 @@ void draw_editor_popup_footer(uint& popup_stack_level) {
 void draw_editor_popup_function_selector() {
     int selected_function = 0;
     array<string> function_names;
-
 
     for (uint function_index = 0; function_index < state.native_functions.length(); function_index++) {
         function_names.insertLast(state.native_functions[function_index].pretty_name);
@@ -740,42 +744,27 @@ void draw_trigger_content(Trigger@ current_trigger) {
 
     //auto ctx = script.CreateContext();
 
-    ImGui_AlignFirstTextHeightToWidgets();
-    ImGui_Text("Event");
-
     uint expression_index = 0;
     uint popup_stack_level = 0;
 
-    draw_expressions(current_trigger.content, expression_index, popup_stack_level);
-    //DrawEventSelector(current_trigger.triggerFunction, ctx);
+    if (ImGui_TreeNodeEx("Event###event_block", ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
+        int selected_event = 0;
+        array<string> event_names;
 
-    // auto call = current_trigger.triggerFunction;
+        for (uint event_index = 0; event_index < EVENT_LAST; event_index++) {
+            event_names.insertLast(state.native_events[event_index].pretty_name);
+        }
 
-    // DrawFunctionCall(call, ctx, null, function(f) {
-    //     return f.isDefaultEvent;
-    // }, index);
+        ImGui_Combo("##function_selector", selected_event, event_names);
 
-    // for (uint j = 0; j < call.statements.length(); j++) {
-    //     if (call.statements[j].literalType is null) {
-    //         continue;
-    //     }
+        ImGui_TreePop();
+    }
 
-    //     if (call.statements[j].literalType.literal == LITERAL_TYPE_FUNCTION) {
-    //         DrawStatements(call.statements[j], call.statements[j].statements, ctx, ++index);
-    //     }
-    // }
+    if (ImGui_TreeNodeEx("Conditions###conditions_block", ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui_TreePop();
+    }
 
-    
-    //DrawStatements(null, array<Expression@> = { current_trigger.triggerFunction }, script.CreateContext(), index);
-
-    /*if (ImGui_Button("Eval")) {
-        script.Execute(
-            AST::FunctionCall(
-                current_trigger.triggerFunction.TransformToExpression(ctx),
-                array<AST::Expression@>()
-            )
-        );
-    }*/
+    draw_expressions_in_a_tree_node("Actions", current_trigger.content, expression_index, popup_stack_level);
 
     ImGui_EndGroup();
 }

@@ -1,27 +1,43 @@
 funcdef void Native_Function_Executor(Native_Call_Context@ context);
 
-enum Event_Type {
-    EVENT_CHARACTER_ENTERS_REGION
-}
-
-class Event_Handler {
+class Event_Definition {
     Event_Type type;
-    Trigger@ trigger;
+    string pretty_name;
+    string format;
+    array<Literal_Type> argument_types;
+    array<Literal_Type> variable_types;
+    array<string> variable_names;
+
+    Event_Definition@ takes(Literal_Type argument_type) {
+        argument_types.insertLast(argument_type);
+        return this;
+    }
+
+    Event_Definition@ defines(string variable_name, Literal_Type literal_type) {
+        variable_types.insertLast(literal_type);
+        variable_names.insertLast(variable_name);
+        return this;
+    }
+
+    Event_Definition@ fmt(string format_string) {
+        format = format_string;
+        return this;
+    }
+
+    Event_Definition@ list_name(string pretty_name) {
+        this.pretty_name = pretty_name;
+        return this;
+    }
 }
 
 class Function_Description {
-    array<Literal_Type> argument_types = {};
+    array<Literal_Type> argument_types;
     Literal_Type return_type = LITERAL_TYPE_VOID;
     string pretty_name;
     string format;
     string function_name;
-    Native_Function_Executor@ native_executor;
 
     Function_Description(){}
-
-    // int opCmp(Function_Description@ description) {
-        // return prettyName.opCmp(description.name);
-    // }
 
     Function_Description@ takes(Literal_Type argument_type) {
         argument_types.insertLast(argument_type);
@@ -50,11 +66,12 @@ class Function_Description {
 }
 
 class Api_Builder {
-    dictionary@ api;
+    dictionary@ api = dictionary();
     array<Function_Description@>@ functions = {};
+    array<Event_Definition@>@ events = {};
 
-    Api_Builder(dictionary@ api) {
-        @this.api = api;
+    Api_Builder() {
+        events.resize(EVENT_LAST);
     }
 
     Function_Description@ func(string name, Native_Function_Executor@ native_executor) {
@@ -62,26 +79,56 @@ class Api_Builder {
         instance.name(name);
         instance.returns(LITERAL_TYPE_VOID);
 
-        if (api !is null) {
-            @api[name] = native_executor;
-        }
+        @api[name] = native_executor;
 
         functions.insertLast(instance);
 
         return instance;
     }
+
+    Event_Definition@ event(Event_Type event_type) {
+        Event_Definition instance;
+        instance.type = event_type;
+
+        @events[event_type] = instance;
+
+        return instance;
+    }
 }
 
-void handle_event_from_message(string message) {
+void try_handle_event_from_message(string message) {
+    array<string> words = split_into_words_and_quoted_pieces(message);
 
+    if (words.length() == 0) {
+        return;
+    }
+
+    string event_type_as_string = words[0];
+    Event_Type event_type = serializeable_string_to_event_type(event_type_as_string);
+
+    if (event_type == EVENT_LAST) {
+        Log(error, "Unrecognized event type from string " + event_type_as_string);
+        return;
+    }
+
+    // TODO parameter parsing
+    try_run_triggers_for_event_type(event_type);
 }
 
-void fire_event_handler(Event_Handler@ handler) {
-    Log(info, "Firing event handler of type: " + handler.type + " for trigger \"" + handler.trigger.name + "\"");
+void try_run_triggers_for_event_type(Event_Type event_type) {
+    for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
+        if (state.triggers[trigger_index].event_type == event_type) {
+            run_trigger(state.triggers[trigger_index]);
+        }
+    }
+}
+
+void run_trigger(Trigger@ trigger) {
+    Log(info, "Running trigger \"" + trigger.name + "\"");
 
     auto time = GetPerformanceCounter();
 
-    Translation_Context@ context = translate_expressions_into_bytecode(handler.trigger.content);
+    Translation_Context@ context = translate_expressions_into_bytecode(trigger.content);
 
     Log(info, "Translation :: " + context.expressions_translated + " expressions translated, took " + get_time_delta_in_ms(time) + "ms");
 
@@ -91,8 +138,14 @@ void fire_event_handler(Event_Handler@ handler) {
     vm.threads.insertLast(thread);
 }
 
-array<Function_Description@>@ populate_native_functions(dictionary@ api) {
-    Api_Builder builder(api);
+Api_Builder@ build_api() {
+    Api_Builder builder;
+
+    builder
+        .event(EVENT_CHARACTER_ENTERS_REGION)
+        .list_name("Character enters a region")
+        .defines("Entering Character", LITERAL_TYPE_CHARACTER)
+        .fmt("A character enters a region");
 
     builder
         .func("log1", api::log1)
@@ -122,7 +175,7 @@ array<Function_Description@>@ populate_native_functions(dictionary@ api) {
         .fmt("Random number")
         .returns(LITERAL_TYPE_NUMBER);
 
-    return builder.functions;
+    return builder;
 }
 
 namespace api {

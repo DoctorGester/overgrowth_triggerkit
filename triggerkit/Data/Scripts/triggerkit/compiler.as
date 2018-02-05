@@ -310,7 +310,9 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
 Translation_Context@ translate_expressions_into_bytecode(array<Expression@>@ expressions) {
     Translation_Context translation_context;
-    populate_native_functions(translation_context.api);
+    
+    Api_Builder@ api_builder = build_api();
+    translation_context.api = api_builder.api;
 
     emit_block(translation_context, expressions);
 

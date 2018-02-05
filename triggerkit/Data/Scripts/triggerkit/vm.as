@@ -361,8 +361,6 @@ void execute_current_instruction(Thread@ thread) {
             Log(error, "Skipping instruction " + instruction_to_string(instruction));
             break;
         }
-
-
     }
 }
 

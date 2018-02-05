@@ -28,6 +28,17 @@ const string KEYWORD_START_BLOCK = "(";
 const string KEYWORD_END_BLOCK = ")";
 
 // TODO Performance!
+Event_Type serializeable_string_to_event_type(string text) {
+    for (uint type_as_int = 0; type_as_int < EVENT_LAST; type_as_int++) {
+        if (event_type_to_serializeable_string(Event_Type(type_as_int)) == text) {
+            return Event_Type(type_as_int);
+        }
+    }
+
+    return EVENT_LAST;
+}
+
+// TODO Performance!
 Operator_Type serializeable_string_to_operator_type(string text) {
     for (uint type_as_int = 0; type_as_int < OPERATOR_LAST; type_as_int++) {
         if (operator_type_to_serializeable_string(Operator_Type(type_as_int)) == text) {

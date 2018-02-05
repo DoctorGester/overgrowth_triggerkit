@@ -1,3 +1,5 @@
+#include "triggerkit/shared_definitions.as"
+
 void SetParameters() {
 }
 
@@ -9,7 +11,7 @@ void Dispose() {
 
 void HandleEvent(string event, MovementObject @mo){
     if(event == "enter"){
-        level.SendMessage("region_enter " + mo.GetID() + " " + hotspot.GetID());
+        level.SendMessage(event_type_to_serializeable_string(EVENT_CHARACTER_ENTERS_REGION) + " " + mo.GetID() + " " + hotspot.GetID());
     } else if(event == "exit"){
     }
 }
