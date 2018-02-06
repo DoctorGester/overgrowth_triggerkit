@@ -1,4 +1,4 @@
-funcdef bool Function_Predicate(Function_Description@ f);
+funcdef bool Function_Predicate(Function_Definition@ f);
 
 namespace icons {
     TextureAssetRef action_variable = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-SetVariables.png", TextureLoadFlags_NoMipmap);
@@ -20,7 +20,7 @@ class Trigger {
 
 class Trigger_Kit_State {
     array<Expression@> edited_expressions;
-    array<Function_Description@> native_functions;
+    array<Function_Definition@> native_functions;
     array<Event_Definition@> native_events;
 
     int current_stack_depth = 0;
@@ -39,11 +39,11 @@ Trigger@ get_current_selected_trigger() {
     return state.triggers[uint(state.selected_trigger)];
 }
 
-array<Function_Description@> filter_native_functions_by_predicate(Function_Predicate@ predicate) {
-    array<Function_Description@> filter_result;
+array<Function_Definition@> filter_native_functions_by_predicate(Function_Predicate@ predicate) {
+    array<Function_Definition@> filter_result;
 
     for (uint index = 0; index < state.native_functions.length(); index++) {
-        Function_Description@ function_description = state.native_functions[index];
+        Function_Definition@ function_description = state.native_functions[index];
 
         if (predicate(function_description)) {
             filter_result.insertLast(function_description);
@@ -292,7 +292,7 @@ string function_call_to_string_simple(Expression@ expression) {
 }
 
 string native_call_to_string(Expression@ expression) {
-    Function_Description@ function_description;
+    Function_Definition@ function_description;
 
     for (uint function_index = 0; function_index < state.native_functions.length(); function_index++) {
         if (state.native_functions[function_index].function_name == expression.identifier_name) {

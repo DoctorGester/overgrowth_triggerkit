@@ -1,10 +1,10 @@
 class Translation_Context {
-    dictionary api;
+    array<Function_Definition@>@ function_definitions;
 
     dictionary native_function_indices;
     dictionary local_variable_indices; // TODO this is incorrect because it's not hierarchical, this should be remade into a stack
     uint local_variable_index = 0;
-    array<Native_Function_Executor@> native_functions;
+    array<Native_Function_Executor@> function_executors;
     array<Memory_Cell> constants;
     array<Instruction> code;
 
@@ -62,22 +62,39 @@ uint find_or_save_string_const(Translation_Context@ ctx, string value) {
     return new_index;
 }
 
-uint find_or_declare_native_function(Translation_Context@ ctx, string name) {
-    if (!ctx.api.exists(name)) {
+Function_Definition@ find_native_function_definition(Translation_Context@ ctx, string name) {
+    for (uint function_index = 0; function_index < ctx.function_definitions.length(); function_index++) {
+        if (ctx.function_definitions[function_index].function_name == name) {
+            return ctx.function_definitions[function_index];
+        }
+    }
+
+    return null;
+}
+
+Function_Definition@ find_or_declare_native_function(Translation_Context@ ctx, string name, uint& function_index) {
+    // TODO speed! ctx.native_function_indices.exists(name) is enough to resolve an index!
+    Function_Definition@ function_definition = find_native_function_definition(ctx, name);
+
+    if (function_definition is null) {
         Log(error, "Function not found in the API: " + name);
         assert(false);
     }
 
     if (ctx.native_function_indices.exists(name)) {
-        return uint(ctx.native_function_indices[name]);
+        function_index = uint(ctx.native_function_indices[name]);
+
+        return function_definition;
     }
 
-    uint new_index = ctx.native_functions.length();
+    uint new_index = ctx.function_executors.length();
 
     ctx.native_function_indices[name] = new_index;
-    ctx.native_functions.insertLast(cast<Native_Function_Executor@>(ctx.api[name]));
+    ctx.function_executors.insertLast(function_definition.native_executor);
 
-    return new_index;
+    function_index = new_index;
+
+    return function_definition;
 }
 
 uint declare_local_variable_and_advance(Translation_Context@ ctx, string name) {
@@ -265,16 +282,18 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         }
 
         case EXPRESSION_NATIVE_CALL: {
-            uint function_id = find_or_declare_native_function(ctx, expression.identifier_name);
+            uint function_index = 0;
+
+            Function_Definition@ function_definition = find_or_declare_native_function(ctx, expression.identifier_name, function_index);
 
             for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
                 emit_expression_bytecode(ctx, expression.arguments[argument_index]);
             }
 
-            emit_instruction(make_native_call_instruction(function_id), target);
+            emit_instruction(make_native_call_instruction(function_index), target);
 
-            if (is_parent_a_block) {
-                // TODO emit a POP if a function has a return value
+            if (is_parent_a_block && function_definition.return_type != LITERAL_TYPE_VOID) {
+                emit_instruction(make_instruction(INSTRUCTION_TYPE_POP), target);
             }
 
             break;
@@ -310,9 +329,9 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
 Translation_Context@ translate_expressions_into_bytecode(array<Expression@>@ expressions) {
     Translation_Context translation_context;
-    
+
     Api_Builder@ api_builder = build_api();
-    translation_context.api = api_builder.api;
+    @translation_context.function_definitions = api_builder.functions;
 
     emit_block(translation_context, expressions);
 

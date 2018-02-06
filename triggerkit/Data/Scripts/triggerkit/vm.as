@@ -63,7 +63,7 @@ class Memory_Cell {
 class Thread {
     Virtual_Machine@ vm;
 
-    array<Native_Function_Executor@>@ native_functions;
+    array<Native_Function_Executor@>@ function_executors;
     array<Memory_Cell>@ constant_pool;
 
     array<Memory_Cell> stack;
@@ -129,7 +129,7 @@ void set_thread_up_from_translation_context(Thread@ thread, Translation_Context@
         thread.code.insertLast(translation_context.code[instruction_index]);
     }
 
-    @thread.native_functions = translation_context.native_functions;
+    @thread.function_executors = translation_context.function_executors;
     @thread.constant_pool = translation_context.constants;
     thread.stack_offset = translation_context.local_variable_index;
 }
@@ -352,7 +352,7 @@ void execute_current_instruction(Thread@ thread) {
         case INSTRUCTION_TYPE_NATIVE_CALL: {
             Native_Call_Context context(thread);
 
-            thread.native_functions[instruction.int_arg](context);
+            thread.function_executors[instruction.int_arg](context);
 
             break;
         }

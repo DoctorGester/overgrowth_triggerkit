@@ -30,56 +30,55 @@ class Event_Definition {
     }
 }
 
-class Function_Description {
+class Function_Definition {
     array<Literal_Type> argument_types;
     Literal_Type return_type = LITERAL_TYPE_VOID;
     string pretty_name;
     string format;
     string function_name;
+    Native_Function_Executor@ native_executor;
 
-    Function_Description(){}
+    Function_Definition(){}
 
-    Function_Description@ takes(Literal_Type argument_type) {
+    Function_Definition@ takes(Literal_Type argument_type) {
         argument_types.insertLast(argument_type);
         return this;
     }
 
-    Function_Description@ returns(Literal_Type return_type) {
+    Function_Definition@ returns(Literal_Type return_type) {
         this.return_type = return_type;
         return this;
     }
 
-    Function_Description@ fmt(string format_string) {
+    Function_Definition@ fmt(string format_string) {
         format = format_string;
         return this;
     }
 
-    Function_Description@ name(string name) {
+    Function_Definition@ name(string name) {
         this.function_name = name;
         return this;
     }
 
-    Function_Description@ list_name(string pretty_name) {
+    Function_Definition@ list_name(string pretty_name) {
         this.pretty_name = pretty_name;
         return this;
     }
 }
 
 class Api_Builder {
-    dictionary@ api = dictionary();
-    array<Function_Description@>@ functions = {};
+    array<Function_Definition@>@ functions = {};
     array<Event_Definition@>@ events = {};
 
     Api_Builder() {
         events.resize(EVENT_LAST);
     }
 
-    Function_Description@ func(string name, Native_Function_Executor@ native_executor) {
-        Function_Description instance;
+    Function_Definition@ func(string name, Native_Function_Executor@ native_executor) {
+        Function_Definition instance;
         instance.name(name);
         instance.returns(LITERAL_TYPE_VOID);
-
-        @api[name] = native_executor;
+        @instance.native_executor = native_executor;
 
         functions.insertLast(instance);
 
