@@ -35,6 +35,8 @@ enum Instruction_Type {
 
 const uint MAX_STACK_SIZE = 256;
 
+funcdef void Instruction_Executor(Thread@ thread, Instruction@ instruction);
+
 class Instruction {
     Instruction_Type type;
 
@@ -169,10 +171,10 @@ int get_relative_code_location(uint to, array<Instruction>@ target) {
 }
 
 Memory_Cell@ thread_stack_pop(Thread@ thread) {
-    if (thread.stack_top == 0) {
+    /*if (thread.stack_top == 0) {
         PrintCallstack();
         assert(false);
-    }
+    }*/
 
     Memory_Cell@ value = thread.stack[--thread.stack_top];
 
@@ -210,157 +212,109 @@ float bool_to_number(bool bool_value) {
     return bool_value ? 1 : 0;
 }
 
-void execute_current_instruction(Thread@ thread) {
-    Instruction@ instruction = thread.code[thread.current_instruction];
-    array<Memory_Cell>@ stack = thread.stack;
+namespace instructions {
+    void const_0(Thread@ thread, Instruction@ instruction) {
+        thread_stack_push_number(thread, 0);
+    }
 
-    // Log(info, instruction_to_string(instruction));
+    void const_1(Thread@ thread, Instruction@ instruction) {
+        thread_stack_push_number(thread, 1);
+    }
 
-    switch (instruction.type) {
-        case INSTRUCTION_TYPE_CONST_0: {
-            thread_stack_push_number(thread, 0);
-            break;
-        }
+    void load_const(Thread@ thread, Instruction@ instruction) {
+        thread_stack_push(thread, thread.constant_pool[instruction.int_arg]);
+    }
 
-        case INSTRUCTION_TYPE_CONST_1: {
-            thread_stack_push_number(thread, 1);
-            break;
-        }
+    void dup(Thread@ thread, Instruction@ instruction) {
+        thread_stack_push(thread, thread_stack_peek(thread));
+    }
 
-        case INSTRUCTION_TYPE_LOAD_CONST: {
-            thread_stack_push(thread, thread.constant_pool[instruction.int_arg]);
+    void inc(Thread@ thread, Instruction@ instruction) {
+        float value = thread_stack_pop(thread).number_value;
+        thread_stack_push_number(thread, value + 1);
+    }
 
-            break;
-        }
+    void dec(Thread@ thread, Instruction@ instruction) {
+        float value = thread_stack_pop(thread).number_value;
+        thread_stack_push_number(thread, value - 1);
+    }
 
-        case INSTRUCTION_TYPE_DUP: {
-            thread_stack_push(thread, thread_stack_peek(thread));
+    void bnot(Thread@ thread, Instruction@ instruction) {
+        bool value = thread_stack_pop(thread).number_value != 0;
+        thread_stack_push_number(thread, bool_to_number(!value));
+    }
 
-            break;
-        }
+    void eq_zero(Thread@ thread, Instruction@ instruction) {
+        float value = thread_stack_pop(thread).number_value;
 
-        case INSTRUCTION_TYPE_INC: {
-            float value = thread_stack_pop(thread).number_value;
-            thread_stack_push_number(thread, value + 1);
+        thread_stack_push_number(thread, bool_to_number(value == 0));
+    }
 
-            break;
-        }
+    void eq_not_zero(Thread@ thread, Instruction@ instruction) {
+        float value = thread_stack_pop(thread).number_value;
 
-        case INSTRUCTION_TYPE_DEC: {
-            float value = thread_stack_pop(thread).number_value;
-            thread_stack_push_number(thread, value - 1);
+        thread_stack_push_number(thread, bool_to_number(value != 0));
+    }
 
-            break;
-        }
+    void eq(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
 
-        case INSTRUCTION_TYPE_NOT: {
-            bool value = thread_stack_pop(thread).number_value != 0;
-            thread_stack_push_number(thread, bool_to_number(!value));
+        thread_stack_push_number(thread, bool_to_number(left == right));
+    }
 
-            break;
-        }
+    void lt(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
 
-        case INSTRUCTION_TYPE_EQ_ZERO: {
-            float value = thread_stack_pop(thread).number_value;
+        thread_stack_push_number(thread, bool_to_number(right < left));
+    }
 
-            thread_stack_push_number(thread, bool_to_number(value == 0));
+    void gt(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
 
-            break;
-        }
+        thread_stack_push_number(thread, bool_to_number(right > left));
+    }
 
-        case INSTRUCTION_TYPE_EQ_NOT_ZERO: {
-            float value = thread_stack_pop(thread).number_value;
+    void load(Thread@ thread, Instruction@ instruction) {
+        thread_stack_push_number(thread, thread.stack[instruction.int_arg].number_value);
+    }
 
-            thread_stack_push_number(thread, bool_to_number(value != 0));
+    void store(Thread@ thread, Instruction@ instruction) {
+        thread_stack_store(thread, instruction.int_arg, thread_stack_pop(thread));
+    }
 
-            break;
-        }
+    void jmp(Thread@ thread, Instruction@ instruction) {
+        thread.current_instruction += instruction.int_arg;
+    }
 
-        case INSTRUCTION_TYPE_EQ: {
-            float left = thread_stack_pop(thread).number_value;
-            float right = thread_stack_pop(thread).number_value;
+    void jmp_if(Thread@ thread, Instruction@ instruction) {
+        bool top = thread_stack_pop(thread).number_value != 0;
 
-            thread_stack_push_number(thread, bool_to_number(left == right));
-
-            break;
-        }
-
-        case INSTRUCTION_TYPE_LT: {
-            float left = thread_stack_pop(thread).number_value;
-            float right = thread_stack_pop(thread).number_value;
-
-            thread_stack_push_number(thread, bool_to_number(right < left));
-
-            break;
-        }
-
-        case INSTRUCTION_TYPE_GT: {
-            float left = thread_stack_pop(thread).number_value;
-            float right = thread_stack_pop(thread).number_value;
-
-            thread_stack_push_number(thread, bool_to_number(right > left));
-
-            break;
-        }
-
-        case INSTRUCTION_TYPE_LOAD: {
-            thread_stack_push_number(thread, stack[instruction.int_arg].number_value);
-
-            break;
-        }
-
-        case INSTRUCTION_TYPE_STORE: {
-            thread_stack_store(thread, instruction.int_arg, thread_stack_pop(thread));
-
-            break;
-        }
-
-        case INSTRUCTION_TYPE_JMP: {
+        if (top) {
             thread.current_instruction += instruction.int_arg;
-
-            break;
         }
+    }
 
-        case INSTRUCTION_TYPE_JMP_IF: {
-            bool top = thread_stack_pop(thread).number_value != 0;
+    void add(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
 
-            if (top) {
-                thread.current_instruction += instruction.int_arg;
-            }
+        thread_stack_push_number(thread, left + right);
+    }
 
-            break;
-        }
+    void sub(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
 
-        case INSTRUCTION_TYPE_ADD: {
-            float left = thread_stack_pop(thread).number_value;
-            float right = thread_stack_pop(thread).number_value;
+        thread_stack_push_number(thread, right - left);
+    }
 
-            thread_stack_push_number(thread, left + right);
+    void native_call(Thread@ thread, Instruction@ instruction) {
+        Native_Call_Context context(thread);
 
-            break;
-        }
-
-        case INSTRUCTION_TYPE_SUB: {
-            float left = thread_stack_pop(thread).number_value;
-            float right = thread_stack_pop(thread).number_value;
-
-            thread_stack_push_number(thread, right - left);
-
-            break;
-        }
-
-        case INSTRUCTION_TYPE_NATIVE_CALL: {
-            Native_Call_Context context(thread);
-
-            thread.function_executors[instruction.int_arg](context);
-
-            break;
-        }
-
-        default: {
-            Log(error, "Skipping instruction " + instruction_to_string(instruction));
-            break;
-        }
+        thread.function_executors[instruction.int_arg](context);
     }
 }
 
@@ -387,7 +341,8 @@ void exhaust_thread_stack(Thread@ thread) {
 void thread_step_forward(Thread@ thread, Thread_Step_Details@ details) {
     uint previous_instruction_index = thread.current_instruction;
 
-    execute_current_instruction(thread);
+    Instruction@ current_instruction = @thread.code[thread.current_instruction];
+    instruction_executors[current_instruction.type](thread, current_instruction);
 
     bool has_advanced_during_the_execution = previous_instruction_index != thread.current_instruction; // TODO dirty, should return a struct from execute_...
     bool has_finished_working = has_advanced_during_the_execution ? 
@@ -400,8 +355,50 @@ void thread_step_forward(Thread@ thread, Thread_Step_Details@ details) {
     details.should_continue = !thread.is_paused;
 }
 
+array<Instruction_Executor@> instruction_executors;
+
+// TODO should be called once!
+void set_up_instruction_executors_temp() {
+    instruction_executors.resize(INSTRUCTION_TYPE_JMP_IF + 1);
+
+    @instruction_executors[INSTRUCTION_TYPE_ADD] = instructions::add;
+    //@instruction_executors[INSTRUCTION_TYPE_MUL] = instructions::i_INSTRUCTION_TYPE_MUL;
+    @instruction_executors[INSTRUCTION_TYPE_SUB] = instructions::sub;
+    //@instruction_executors[INSTRUCTION_TYPE_DIV] = instructions::i_INSTRUCTION_TYPE_DIV;
+
+    @instruction_executors[INSTRUCTION_TYPE_DUP] = instructions::dup;
+    @instruction_executors[INSTRUCTION_TYPE_INC] = instructions::inc;
+    @instruction_executors[INSTRUCTION_TYPE_DEC] = instructions::dec;
+    @instruction_executors[INSTRUCTION_TYPE_NOT] = instructions::bnot;
+
+    @instruction_executors[INSTRUCTION_TYPE_LOAD_CONST] = instructions::load_const;
+
+    @instruction_executors[INSTRUCTION_TYPE_CONST_0] = instructions::const_0;
+    @instruction_executors[INSTRUCTION_TYPE_CONST_1] = instructions::const_1;
+
+    @instruction_executors[INSTRUCTION_TYPE_LOAD] = instructions::load;
+    @instruction_executors[INSTRUCTION_TYPE_STORE] = instructions::store;
+
+    //@instruction_executors[INSTRUCTION_TYPE_ARRAY_LOAD] = instructions::i_INSTRUCTION_TYPE_ARRAY_LOAD;
+    //@instruction_executors[INSTRUCTION_TYPE_ARRAY_STORE] = instructions::i_INSTRUCTION_TYPE_ARRAY_STORE;
+
+    @instruction_executors[INSTRUCTION_TYPE_EQ_ZERO] = instructions::eq_zero;
+    @instruction_executors[INSTRUCTION_TYPE_EQ_NOT_ZERO] = instructions::eq_not_zero;
+    @instruction_executors[INSTRUCTION_TYPE_EQ] = instructions::eq;
+    @instruction_executors[INSTRUCTION_TYPE_LT] = instructions::lt;
+    @instruction_executors[INSTRUCTION_TYPE_GT] = instructions::gt;
+
+    //@instruction_executors[INSTRUCTION_TYPE_POP] = instructions::i_INSTRUCTION_TYPE_POP;
+
+    @instruction_executors[INSTRUCTION_TYPE_NATIVE_CALL] = instructions::native_call;
+    @instruction_executors[INSTRUCTION_TYPE_JMP] = instructions::jmp;
+    @instruction_executors[INSTRUCTION_TYPE_JMP_IF] = instructions::jmp_if;
+}
+
 void update_vm_state(Virtual_Machine@ virtual_machine) {
     Thread_Step_Details details;
+
+    set_up_instruction_executors_temp();
 
     for (uint thread_index = 0; thread_index < virtual_machine.threads.length(); thread_index++) {
         Thread@ thread = virtual_machine.threads[thread_index];
@@ -411,7 +408,7 @@ void update_vm_state(Virtual_Machine@ virtual_machine) {
                 thread.is_paused = false;
             }
         }
-            
+        
         if (!thread.is_paused) {
             while (true) {
                 thread_step_forward(thread, @details);
@@ -437,4 +434,6 @@ void update_vm_state(Virtual_Machine@ virtual_machine) {
             }
         }
     }
+
+    instruction_executors.resize(0);
 }
