@@ -54,6 +54,14 @@ class Expression {
 Virtual_Machine@ vm;
 Trigger_Kit_State@ state;
 
+Expression@ make_empty_lit(Literal_Type literal_type) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = literal_type;
+
+    return expression;
+}
+
 Expression@ make_lit(float v) {
     Expression expression;
     expression.type = EXPRESSION_LITERAL;

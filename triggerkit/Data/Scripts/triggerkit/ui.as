@@ -322,22 +322,22 @@ array<string>@ split_function_format_string_into_pieces(string format) {
     return result;
 }
 
-string function_call_to_string(Expression@ expression) {
-    Function_Definition@ function_definition;
-
+Function_Definition@ find_function_definition_by_function_name(string function_name) {
     for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
-        if (state.function_definitions[function_index].function_name == expression.identifier_name) {
-            @function_definition = state.function_definitions[function_index];
-            break;
+        if (state.function_definitions[function_index].function_name == function_name) {
+            return state.function_definitions[function_index];
         }
     }
+
+    return null;
+}
+
+string function_call_to_string(Expression@ expression) {
+    Function_Definition@ function_definition = find_function_definition_by_function_name(expression.identifier_name);
 
     if (function_definition is null) {
         return function_call_to_string_simple(expression);
     }
-
-    int character_index = 0;
-    int current_argument_index = 0;
 
     string result = "";
 
@@ -443,16 +443,33 @@ void draw_editor_popup_function_selector(Expression@ expression) {
     array<string> function_names;
 
     for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
-        string name = state.function_definitions[function_index].pretty_name;
+        Function_Definition@ function_definition = state.function_definitions[function_index];
+
+        string name = function_definition.pretty_name;
 
         if (name.isEmpty()) {
-            name = state.function_definitions[function_index].function_name;
+            name = function_definition.function_name;
+        }
+
+        if (expression.identifier_name == function_definition.function_name) {
+            selected_function = function_index;
         }
 
         function_names.insertLast(name);
     }
 
-    ImGui_Combo("##function_selector", selected_function, function_names);
+    if (ImGui_Combo("##function_selector", selected_function, function_names)) {
+        Function_Definition@ selected_definition = state.function_definitions[selected_function];
+
+        expression.identifier_name = selected_definition.function_name;
+        expression.arguments.resize(selected_definition.argument_types.length());
+
+        for (uint argument_index = 0; argument_index < selected_definition.argument_types.length(); argument_index++) {
+            Literal_Type argument_type = selected_definition.argument_types[argument_index];
+
+            @expression.arguments[argument_index] = make_empty_lit(argument_type);
+        }
+    }
 }
 
 void draw_statement_editor_popup(uint& expression_index, uint& popup_stack_level) {
@@ -611,6 +628,57 @@ void draw_type_selector(Expression@ expression, string text_label, Literal_Type 
     ImGui_SameLine();
 }
 
+void draw_function_call_as_broken_into_pieces_simple(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
+    draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
+
+    pre_expression_text("(");
+
+    for (uint argument_index = 0; argument_index < expression.arguments.length(); argument_index++) {
+        draw_expression_and_continue_on_the_same_line(expression.arguments[argument_index], expression_index, popup_stack_level);
+    }
+
+    post_expression_text(")");
+}
+
+void draw_function_call_as_broken_into_pieces(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
+    Function_Definition@ function_definition = find_function_definition_by_function_name(expression.identifier_name);
+
+    if (function_definition is null) {
+        draw_function_call_as_broken_into_pieces_simple(expression, expression_index, popup_stack_level);
+        return;
+    }
+
+    array<string>@ pieces = split_function_format_string_into_pieces(function_definition.format);
+
+    ImGui_AlignFirstTextHeightToWidgets();
+
+    for (uint argument_index = 0; argument_index < function_definition.argument_types.length(); argument_index++) {
+        if (!pieces[argument_index].isEmpty()) {
+            ImGui_Text(pieces[argument_index]);
+            ImGui_SameLine();
+        }
+
+        string argument_as_string = literal_type_to_ui_string(function_definition.argument_types[argument_index]);
+        bool argument_found = false;
+
+        if (expression.arguments.length() > argument_index) {
+            Expression@ argument_expression = expression.arguments[argument_index];
+            argument_found = argument_expression !is null;
+
+            if (argument_found) {
+                draw_expression_and_continue_on_the_same_line(argument_expression, expression_index, popup_stack_level);
+            }
+        }
+
+        if (!argument_found) {
+            ImGui_Text(argument_as_string);
+            ImGui_SameLine();
+        }
+    }
+
+    ImGui_Text(pieces[pieces.length() - 1]);
+}
+
 void draw_expression_as_broken_into_pieces(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
@@ -665,15 +733,7 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
         }
 
         case EXPRESSION_CALL: {
-            draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
-
-            pre_expression_text("(");
-
-            for (uint argument_index = 0; argument_index < expression.arguments.length(); argument_index++) {
-                draw_expression_and_continue_on_the_same_line(expression.arguments[argument_index], expression_index, popup_stack_level);
-            }
-
-            post_expression_text(")");
+            draw_function_call_as_broken_into_pieces(expression, expression_index, popup_stack_level);
 
             break;
         }
@@ -691,6 +751,9 @@ TextureAssetRef get_call_icon(Expression@ expression) {
     for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
         Function_Definition@ function_definition = state.function_definitions[function_index];
         if (function_definition.function_name == expression.identifier_name) {
+            if (function_definition.return_type == LITERAL_TYPE_BOOL) {
+                return icons::action_logical;
+            }
             
             switch (function_definition.function_category) {
                 case CATEGORY_WAIT: return icons::action_wait;

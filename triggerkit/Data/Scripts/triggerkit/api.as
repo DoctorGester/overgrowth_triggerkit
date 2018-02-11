@@ -301,6 +301,14 @@ Api_Builder@ build_api() {
         .category(CATEGORY_WAIT)
         .fmt("Sleep until the next update");
 
+    builder
+        .func("are_strings_equal", api::are_strings_equal)
+        .list_name("String comparison")
+        .fmt("{} is {}")
+        .takes(LITERAL_TYPE_STRING)
+        .takes(LITERAL_TYPE_STRING)
+        .returns(LITERAL_TYPE_BOOL);
+
     // Userland functions
 
     builder
@@ -348,6 +356,10 @@ namespace environment {
 }
 
 namespace api {
+    void are_strings_equal(Native_Call_Context@ ctx) {
+        ctx.return_bool(ctx.take_string() == ctx.take_string());
+    }
+
     void dialogue_say(Native_Call_Context@ ctx) {
         string who = ctx.take_string();
         string what = ctx.take_string();
