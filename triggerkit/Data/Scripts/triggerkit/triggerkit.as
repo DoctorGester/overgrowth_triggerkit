@@ -11,7 +11,8 @@
 // VM: Exceptions (divide by zero, etc)
 // VM: Array types
 // VM/Compiler: _RESERVE seems like a useless instruction? What are we doing wrong here exactly? There has to be
-//              a way to move the stack pointer without it                
+//              a way to move the stack pointer without it
+
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"
@@ -134,6 +135,22 @@ Expression@ make_while(Expression@ condition, array<Expression@>@ body) {
     return expression;
 }
 
+Expression@ make_if(Expression@ condition, array<Expression@>@ then_body = null, array<Expression@>@ else_body = null) {
+    Expression@ expression = Expression();
+    expression.type = EXPRESSION_IF;
+    @expression.value_expression = condition;
+
+    if (then_body !is null) {
+        expression.block_body = then_body;
+    }
+    
+    if (else_body !is null) {
+        expression.else_block_body = else_body;
+    }
+
+    return expression;
+}
+
 double get_time_delta_in_ms(uint64 start) {
     return double((GetPerformanceCounter() - start)*1000) / GetPerformanceFrequency();
 }
@@ -223,18 +240,21 @@ array<Expression@>@ make_test_dialogue_expression_array() {
     Expression@ wait_for = make_native_call_expr("wait");
     wait_for.arguments.insertLast(calc);*/
 
+    Expression@ print_name = make_native_call_expr("print_str");
+    print_name.arguments.insertLast(make_ident("Entering Character"));
+
     array<Expression@>@ expressions = {
         /*make_native_call_expr("log1"),
         wait_for,
         make_native_call_expr("log2"),
         calc*/
-
         make_native_call_expr("start_dialogue"),
         make_say_expr("Bongus", "Mega hail to you my fiend friend"),
         make_native_call_expr("wait_until_dialogue_line_is_complete"),
         make_say_expr("Dingo", "Hi to u as well noob"),
         make_native_call_expr("wait_until_dialogue_line_is_complete"),
-        make_native_call_expr("end_dialogue")
+        make_native_call_expr("end_dialogue"),
+        print_name
     };
 
     return expressions;
@@ -354,11 +374,11 @@ void DrawGUI() {
         }
 
         if (ImGui_Button("Populate first trigger with test code")) {
-            state.triggers[0].content = make_test_expression_array();
+            state.triggers[0].actions = make_test_expression_array();
         }
 
         if (ImGui_Button("Populate second trigger with dialogue code")) {
-            state.triggers[1].content = make_test_dialogue_expression_array();
+            state.triggers[1].actions = make_test_dialogue_expression_array();
         }
         
         if (ImGui_Button("Save and load code")) {

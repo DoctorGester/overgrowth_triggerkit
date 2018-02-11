@@ -401,13 +401,13 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
                 uint function_index = find_or_declare_native_function_index(ctx, function_definition);
 
-                Log(info, "Declared native " + function_definition.function_name + " as " + function_index);
+                // Log(info, "Declared native " + function_definition.function_name + " as " + function_index);
 
                 emit_instruction(make_native_call_instruction(function_index), target);
             } else {
                 uint function_index = find_user_function_index(ctx, function_definition);
 
-                Log(info, "Declared " + function_definition.function_name + " as " + function_index);
+                // Log(info, "Declared " + function_definition.function_name + " as " + function_index);
 
                 // TODO Is this the right way to reserve space for a return value?
                 if (function_definition.return_type != LITERAL_TYPE_VOID) {
@@ -477,7 +477,16 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
     }
 }
 
+// TODO don't need extra versions of those!
 Translation_Context@ translate_expressions_into_bytecode(array<Expression@>@ expressions) {
+    return translate_expressions_into_bytecode(null, expressions);
+}
+
+Translation_Context@ translate_expressions_into_bytecode(Function_Definition@ entry_function_definition) {
+    return translate_expressions_into_bytecode(entry_function_definition, entry_function_definition.user_code);
+}
+
+Translation_Context@ translate_expressions_into_bytecode(Function_Definition@ entry_function_definition, array<Expression@>@ expressions) {
     Translation_Context translation_context;
 
     Api_Builder@ api_builder = build_api();
@@ -506,7 +515,7 @@ Translation_Context@ translate_expressions_into_bytecode(array<Expression@>@ exp
     }
 
     // Emit main
-    translation_context.main_function_pointer = emit_user_function(translation_context, null, expressions);
+    translation_context.main_function_pointer = emit_user_function(translation_context, entry_function_definition, expressions);
 
     return translation_context;
 }

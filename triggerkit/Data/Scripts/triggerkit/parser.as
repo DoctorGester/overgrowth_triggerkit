@@ -174,10 +174,7 @@ Expression@ parse_words_into_expression(Parser_State@ state) {
         return make_return(value_expression);
     } else if (word == KEYWORD_IF) {
         Expression@ value_expression = parse_words_into_expression(state);
-
-        Expression@ if_statement = Expression();
-        if_statement.type = EXPRESSION_IF;
-        @if_statement.value_expression = value_expression;
+        Expression@ if_statement = make_if(value_expression);
 
         parse_words_into_expression_array(state, if_statement.block_body);
         parser_next_word(state); // Else

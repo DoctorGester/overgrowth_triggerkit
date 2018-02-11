@@ -216,6 +216,7 @@ void thread_stack_push(Thread@ thread, Memory_Cell@ value) {
 void thread_stack_store(Thread@ thread, uint in_slot, Memory_Cell@ value) {
     Memory_Cell@ cell = thread.stack[in_slot];
     cell.number_value = value.number_value;
+    cell.string_value = value.string_value;
 }
 
 float bool_to_number(bool bool_value) {
@@ -292,7 +293,7 @@ namespace instructions {
     }
 
     void load(Thread@ thread, Instruction@ instruction) {
-        thread_stack_push_number(thread, thread.stack[thread.current_call_frame_pointer + instruction.int_arg].number_value);
+        thread_stack_push(thread, thread.stack[thread.current_call_frame_pointer + instruction.int_arg]);
     }
 
     void store(Thread@ thread, Instruction@ instruction) {
@@ -316,7 +317,7 @@ namespace instructions {
         uint function_pointer = uint(thread.constant_pool[instruction.int_arg].number_value);
         uint number_of_arguments = uint(thread.constant_pool[instruction.int_arg + 1].number_value);
 
-        Log(info, "CALL :: " + function_pointer + " :: " + number_of_arguments);
+        // Log(info, "CALL :: " + function_pointer + " :: " + number_of_arguments);
 
         array<Memory_Cell> arguments_array_copy;
 

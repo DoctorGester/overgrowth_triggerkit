@@ -5,7 +5,7 @@ string serialize_triggers_into_string(array<Trigger@>@ triggers) {
 
     for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
         Trigger@ trigger = state.triggers[trigger_index];
-        array<Expression@>@ code = trigger.content;
+        array<Expression@>@ code = trigger.actions;
 
         string trigger_metadata = KEYWORD_TRIGGER + " " + serializeable_string(trigger.name) + "\n" + serializeable_string(trigger.description);
         string trigger_as_text = join(array<string> = {
@@ -38,7 +38,7 @@ array<Trigger@> parse_triggers_from_string(string from_text) {
             if (word == KEYWORD_DESCRIPTION) {
                 current_trigger.description = parser_next_word(state);
             } else if (word == KEYWORD_CODE) {
-                parse_words_into_expression_array(state, current_trigger.content);
+                parse_words_into_expression_array(state, current_trigger.actions);
                 triggers.insertLast(current_trigger);
             }
         }

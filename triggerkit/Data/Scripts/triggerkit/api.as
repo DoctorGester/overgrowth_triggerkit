@@ -129,6 +129,38 @@ class Api_Builder {
     }
 }
 
+Function_Definition@ convert_trigger_to_function_definition(Trigger@ trigger) {
+    Function_Definition result;
+
+    Event_Definition@ trigger_event = state.native_events[trigger.event_type];
+
+    for (uint variable_index = 0; variable_index < trigger_event.variable_types.length(); variable_index++) {
+        Literal_Type variable_type = trigger_event.variable_types[variable_index];
+        string variable_name = trigger_event.variable_names[variable_index]; 
+
+        result.takes(variable_type, variable_name);
+    }
+
+    uint total_conditions = trigger.conditions.length();
+
+    if (total_conditions == 0) {
+        result.user_code = trigger.actions;
+        return result;
+    }
+
+    Expression@ assembled_condition = trigger.conditions[0];
+
+    if (total_conditions > 1) {
+        for (uint condition_index = 1; condition_index < total_conditions; condition_index++) {
+            assembled_condition = make_op_expr(OPERATOR_AND, assembled_condition, trigger.conditions[condition_index]);
+        }
+    }
+
+    Expression@ condition_wrapper = make_if(assembled_condition, trigger.actions);
+
+    return result;
+}
+
 void try_handle_event_from_message(string message) {
     array<string> words = split_into_words_and_quoted_pieces(message);
 
@@ -144,33 +176,62 @@ void try_handle_event_from_message(string message) {
         return;
     }
 
-    // TODO parameter parsing
-    try_run_triggers_for_event_type(event_type);
+    Parser_State event_parser;
+    event_parser.words = words;
+    event_parser.current_word = 1;
+
+    array<Memory_Cell@> parameters;
+
+    parse_parameters_for_event_type(event_type, event_parser, parameters);
+    try_run_triggers_for_event_type(event_type, parameters);
 }
 
-void try_run_triggers_for_event_type(Event_Type event_type) {
-    for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
-        if (state.triggers[trigger_index].event_type == event_type) {
-            run_trigger(state.triggers[trigger_index]);
+void parse_parameters_for_event_type(Event_Type event_type, Parser_State@ parser_state, array<Memory_Cell@>@ parameters) {
+    switch (event_type) {
+        case EVENT_CHARACTER_ENTERS_REGION: {
+            string character_id_as_string = parser_next_word(parser_state);
+            string hotspot_id_as_string = parser_next_word(parser_state);
+
+            string character_name = ReadObjectFromID(atoi(character_id_as_string)).GetName();
+
+            parameters.insertLast(make_memory_cell(character_name));
+
+            break;
         }
     }
 }
 
-void run_trigger(Trigger@ trigger) {
+void try_run_triggers_for_event_type(Event_Type event_type, array<Memory_Cell@>@ parameters) {
+    for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
+        if (state.triggers[trigger_index].event_type == event_type) {
+            run_trigger(state.triggers[trigger_index], parameters);
+        }
+    }
+}
+
+Thread@ run_trigger(Trigger@ trigger, array<Memory_Cell@>@ parameters) {
     Log(info, "Running trigger \"" + trigger.name + "\"");
 
     auto time = GetPerformanceCounter();
 
-    Translation_Context@ context = translate_expressions_into_bytecode(trigger.content);
+    Function_Definition@ trigger_function = convert_trigger_to_function_definition(trigger);
+    Translation_Context@ context = translate_expressions_into_bytecode(trigger_function);
 
     Log(info, "Translation :: " + context.expressions_translated + " expressions translated, took " + get_time_delta_in_ms(time) + "ms");
 
     Thread@ thread = make_thread(vm);
     set_thread_up_from_translation_context(thread, context);
 
-    print_bytecode(thread);
+    for (uint parameter_index = 0; parameter_index < parameters.length(); parameter_index++) {
+        uint slot = parameters.length() - parameter_index - 1;
+        thread_stack_store(thread, slot, parameters[parameter_index]);
+
+        Log(info, "Storing :: " + memory_cell_to_string(parameters[parameter_index]) + " at " + slot);
+    }
 
     vm.threads.insertLast(thread);
+
+    return thread;
 }
 
 Api_Builder@ build_api() {
@@ -179,7 +240,7 @@ Api_Builder@ build_api() {
     builder
         .event(EVENT_CHARACTER_ENTERS_REGION)
         .list_name("Character enters a region")
-        .defines("Entering Character", LITERAL_TYPE_CHARACTER)
+        .defines("Entering Character", LITERAL_TYPE_STRING)
         .fmt("A character enters a region");
 
     builder

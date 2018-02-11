@@ -11,8 +11,8 @@ namespace icons {
 class Trigger {
     string name;
     string description;
-    Expression@ event_definition;
-    array<Expression@> content;
+    array<Expression@> conditions;
+    array<Expression@> actions;
     Event_Type event_type = EVENT_CHARACTER_ENTERS_REGION;
 
     Trigger(string name) {
@@ -795,7 +795,7 @@ void draw_trigger_content(Trigger@ current_trigger) {
         ImGui_TreePop();
     }
 
-    draw_expressions_in_a_tree_node("Actions", current_trigger.content, expression_index, popup_stack_level);
+    draw_expressions_in_a_tree_node("Actions", current_trigger.actions, expression_index, popup_stack_level);
 
     ImGui_EndGroup();
 }
