@@ -22,7 +22,7 @@ class Trigger {
 
 class Trigger_Kit_State {
     array<Expression@> edited_expressions;
-    array<Function_Definition@> native_functions;
+    array<Function_Definition@> function_definitions;
     array<Event_Definition@> native_events;
 
     int current_stack_depth = 0;
@@ -41,11 +41,11 @@ Trigger@ get_current_selected_trigger() {
     return state.triggers[uint(state.selected_trigger)];
 }
 
-array<Function_Definition@> filter_native_functions_by_predicate(Function_Predicate@ predicate) {
+array<Function_Definition@> filter_function_definitions_by_predicate(Function_Predicate@ predicate) {
     array<Function_Definition@> filter_result;
 
-    for (uint index = 0; index < state.native_functions.length(); index++) {
-        Function_Definition@ function_description = state.native_functions[index];
+    for (uint index = 0; index < state.function_definitions.length(); index++) {
+        Function_Definition@ function_description = state.function_definitions[index];
 
         if (predicate(function_description)) {
             filter_result.insertLast(function_description);
@@ -59,7 +59,7 @@ Trigger_Kit_State@ make_trigger_kit_state() {
     Trigger_Kit_State state;
 
     Api_Builder@ api_builder = build_api();
-    state.native_functions = api_builder.functions;
+    state.function_definitions = api_builder.functions;
     state.native_events = api_builder.events;
 
     return state;
@@ -293,43 +293,24 @@ string function_call_to_string_simple(Expression@ expression) {
     return expression.identifier_name + "(" + join(arguments, ", ") + ")";
 }
 
-string native_call_to_string(Expression@ expression) {
-    Function_Definition@ function_description;
-
-    for (uint function_index = 0; function_index < state.native_functions.length(); function_index++) {
-        if (state.native_functions[function_index].function_name == expression.identifier_name) {
-            @function_description = state.native_functions[function_index];
-            break;
-        }
-    }
-
-    if (function_description is null) {
-        return function_call_to_string_simple(expression);
-    }
+// TODO speed, can DEFINITELY be cached
+// TODO speed, can DEFINITELY be cached
+// TODO speed, can DEFINITELY be cached
+array<string>@ split_function_format_string_into_pieces(string format) {
+    array<string> result;
 
     int character_index = 0;
-    int current_argument_index = 0;
-
-    string result = "";
-    string format = function_description.format;
 
     while (true) {
-        int new_character_index = format.findFirst("%s", character_index);
+        int new_character_index = format.findFirst("{}", character_index);
 
         if (new_character_index != -1) {
-            string argument_as_string = expression_to_string(expression.arguments[current_argument_index]);
-
-            if (expression.arguments[current_argument_index].type != EXPRESSION_LITERAL) {
-                argument_as_string = "(" + argument_as_string + ")";
-            }
-
-            result += format.substr(character_index, new_character_index - character_index) + argument_as_string;
-            current_argument_index++;
+            result.insertLast(format.substr(character_index, new_character_index - character_index));
         } else {
             if (character_index == 0) {
-                result = format;
+                result.insertLast(format);
             } else {
-                result += format.substr(character_index);
+                result.insertLast(format.substr(character_index));
             }
 
             break;
@@ -337,6 +318,52 @@ string native_call_to_string(Expression@ expression) {
 
         character_index = new_character_index + 2;
     }
+
+    return result;
+}
+
+string function_call_to_string(Expression@ expression) {
+    Function_Definition@ function_definition;
+
+    for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
+        if (state.function_definitions[function_index].function_name == expression.identifier_name) {
+            @function_definition = state.function_definitions[function_index];
+            break;
+        }
+    }
+
+    if (function_definition is null) {
+        return function_call_to_string_simple(expression);
+    }
+
+    int character_index = 0;
+    int current_argument_index = 0;
+
+    string result = "";
+
+    array<string>@ pieces = split_function_format_string_into_pieces(function_definition.format);
+
+    for (uint argument_index = 0; argument_index < function_definition.argument_types.length(); argument_index++) {
+        result += pieces[argument_index];
+
+        string argument_as_string = literal_type_to_ui_string(function_definition.argument_types[argument_index]);
+
+        if (expression.arguments.length() > argument_index) {
+            Expression@ argument_expression = expression.arguments[argument_index];
+
+            if (argument_expression !is null) {
+                argument_as_string = expression_to_string(argument_expression);
+
+                if (argument_expression.type != EXPRESSION_LITERAL) {
+                    argument_as_string = "(" + argument_as_string + ")";
+                }
+            }
+        }
+
+        result += argument_as_string;
+    }
+
+    result += pieces[pieces.length() - 1];
 
     return result;
     //return expression.identifier_name + "(" + join(arguments, ", ") + ")";
@@ -376,7 +403,7 @@ string expression_to_string(Expression@ expression) {
             }, " ");
         case EXPRESSION_IDENTIFIER: return colored_identifier(expression.identifier_name);
         case EXPRESSION_LITERAL: return literal_to_ui_string(expression);
-        case EXPRESSION_CALL: return native_call_to_string(expression);
+        case EXPRESSION_CALL: return function_call_to_string(expression);
         case EXPRESSION_REPEAT: {
             return join(array<string> = {
                 colored_keyword("Repeat"),
@@ -411,28 +438,36 @@ void draw_editor_popup_footer(uint& popup_stack_level) {
     }
 }
 
-void draw_editor_popup_function_selector() {
+void draw_editor_popup_function_selector(Expression@ expression) {
     int selected_function = 0;
     array<string> function_names;
 
-    for (uint function_index = 0; function_index < state.native_functions.length(); function_index++) {
-        function_names.insertLast(state.native_functions[function_index].pretty_name);
+    for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
+        string name = state.function_definitions[function_index].pretty_name;
+
+        if (name.isEmpty()) {
+            name = state.function_definitions[function_index].function_name;
+        }
+
+        function_names.insertLast(name);
     }
 
     ImGui_Combo("##function_selector", selected_function, function_names);
 }
 
 void draw_statement_editor_popup(uint& expression_index, uint& popup_stack_level) {
+    Expression@ expression = state.edited_expressions[popup_stack_level - 1];
+
     ImGui_Text("Action type");
 
-    draw_editor_popup_function_selector();
+    draw_editor_popup_function_selector(expression);
 
     ImGui_NewLine();
     ImGui_Separator();
     ImGui_NewLine();
 
     ImGui_Text("Action text");
-    draw_expression_as_broken_into_pieces(state.edited_expressions[popup_stack_level - 1], expression_index, popup_stack_level);
+    draw_expression_as_broken_into_pieces(expression, expression_index, popup_stack_level);
 
     draw_editor_popup_footer(popup_stack_level);
 
@@ -464,7 +499,7 @@ void draw_expression_editor_popup(uint& expression_index, uint& popup_stack_leve
 
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
-    draw_editor_popup_function_selector();
+    draw_editor_popup_function_selector(expression);
 
     if (is_a_function_call || is_an_operator) {
         ImGui_SetCursorPosX(offset);
@@ -653,8 +688,8 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
 // TODO speed! Could be array indexed
 // We could also just store Function_Definition references in expressions
 TextureAssetRef get_call_icon(Expression@ expression) {
-    for (uint function_index = 0; function_index < state.native_functions.length(); function_index++) {
-        Function_Definition@ function_definition = state.native_functions[function_index];
+    for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
+        Function_Definition@ function_definition = state.function_definitions[function_index];
         if (function_definition.function_name == expression.identifier_name) {
             
             switch (function_definition.function_category) {
@@ -701,7 +736,7 @@ void draw_expression_image(Expression@ expression) {
 void draw_expressions(array<Expression@>@ expressions, uint& expression_index, uint& popup_stack_level) {
     if (expressions.length() == 0) {
         if (ImGui_Button("+##bluz")) {
-            expressions.insertLast(make_native_call_expr("dingo"));
+            expressions.insertLast(make_function_call("dingo"));
             return;
         }
     }
@@ -724,7 +759,7 @@ void draw_expressions(array<Expression@>@ expressions, uint& expression_index, u
             // ImGui_SetCursorPosX(x_position_snapped);
             
             if (ImGui_Button("+")) {
-                expressions.insertAt(uint(index) + 1, make_native_call_expr("dingo"));
+                expressions.insertAt(uint(index) + 1, make_function_call("dingo"));
             }
 
             ImGui_SameLine();
@@ -791,10 +826,7 @@ void draw_trigger_content(Trigger@ current_trigger) {
         ImGui_TreePop();
     }
 
-    if (ImGui_TreeNodeEx("Conditions###conditions_block", ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui_TreePop();
-    }
-
+    draw_expressions_in_a_tree_node("Conditions", current_trigger.conditions, expression_index, popup_stack_level);
     draw_expressions_in_a_tree_node("Actions", current_trigger.actions, expression_index, popup_stack_level);
 
     ImGui_EndGroup();

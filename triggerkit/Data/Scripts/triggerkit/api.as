@@ -256,13 +256,13 @@ Api_Builder@ build_api() {
     builder
         .func("print", api::print)
         .list_name("Print a number to console")
-        .fmt("Print %s to console")
+        .fmt("Print {} to console")
         .takes(LITERAL_TYPE_NUMBER);
 
     builder
         .func("print_str", api::print_str)
         .list_name("Display text")
-        .fmt("Display %s")
+        .fmt("Display {}")
         .takes(LITERAL_TYPE_STRING);
 
     builder
@@ -279,7 +279,7 @@ Api_Builder@ build_api() {
 
     builder
         .func("dialogue_say", api::dialogue_say)
-        .fmt("> %s: %s")
+        .fmt("> {}: {}")
         .category(CATEGORY_DIALOGUE)
         .takes(LITERAL_TYPE_STRING)
         .takes(LITERAL_TYPE_STRING);
@@ -310,13 +310,13 @@ Api_Builder@ build_api() {
 
     builder
         .func("wait", api::wait())
-        .fmt("Wait for %s seconds")
+        .fmt("Wait for {} seconds")
         .takes(LITERAL_TYPE_NUMBER, "seconds")
         .category(CATEGORY_WAIT);
 
     builder
         .func("sub_test", api::sub_func())
-        .fmt("Math: %s - %s")
+        .fmt("Math: {} - {}")
         .takes(LITERAL_TYPE_NUMBER, "left")
         .takes(LITERAL_TYPE_NUMBER, "right")
         .returns(LITERAL_TYPE_NUMBER)
@@ -403,14 +403,14 @@ namespace api {
 
     array<Expression@>@ wait_until_dialogue_line_is_complete() {
         return array<Expression@> = {
-            make_while(make_native_call_expr("is_in_dialogue"), array<Expression@> = {
-                make_native_call_expr("sleep")
+            make_while(make_function_call("is_in_dialogue"), array<Expression@> = {
+                make_function_call("sleep")
             })
         };
     }
 
     array<Expression@>@ wait() {
-        Expression@ get_time = make_native_call_expr("get_game_time");
+        Expression@ get_time = make_function_call("get_game_time");
         Expression@ target_time = make_op_expr(OPERATOR_ADD, get_time, make_ident("seconds"));
         Expression@ target_time_declaration = make_declaration(LITERAL_TYPE_NUMBER, "target_time", target_time);
         Expression@ condition = make_op_expr(OPERATOR_LT, get_time, make_ident("target_time"));
@@ -418,7 +418,7 @@ namespace api {
         return array<Expression@> = {
             target_time_declaration,
             make_while(condition, array<Expression@> = {
-                make_native_call_expr("sleep")
+                make_function_call("sleep")
             })
         };
     }

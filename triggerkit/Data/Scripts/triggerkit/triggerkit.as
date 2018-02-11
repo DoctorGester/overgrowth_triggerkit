@@ -109,7 +109,7 @@ Expression@ make_op_expr(Operator_Type type, Expression@ left, Expression@ right
     return expression;
 }
 
-Expression@ make_native_call_expr(string name) {
+Expression@ make_function_call(string name) {
     Expression@ expr = Expression();
     expr.type = EXPRESSION_CALL;
     expr.identifier_name = name;
@@ -169,15 +169,15 @@ array<Expression@>@ make_test_expression_array() {
         or_op
     );
 
-    Expression@ log1 = make_native_call_expr("log1");
-    Expression@ log2 = make_native_call_expr("log2");
-    Expression@ wait = make_native_call_expr("wait");
+    Expression@ log1 = make_function_call("log1");
+    Expression@ log2 = make_function_call("log2");
+    Expression@ wait = make_function_call("wait");
 
-    Expression@ print = make_native_call_expr("print");
-    Expression@ rnd = make_native_call_expr("rnd");
+    Expression@ print = make_function_call("print");
+    Expression@ rnd = make_function_call("rnd");
     print.arguments.insertLast(rnd);
 
-    Expression@ print_str = make_native_call_expr("print_str");
+    Expression@ print_str = make_function_call("print_str");
     print_str.arguments.insertLast(make_lit("donger"));
 
 
@@ -225,7 +225,7 @@ array<Expression@>@ make_test_expression_array() {
 }
 
 Expression@ make_say_expr(string who, string what) {
-    Expression@ expr = make_native_call_expr("dialogue_say");
+    Expression@ expr = make_function_call("dialogue_say");
     expr.arguments.insertLast(make_lit(who));
     expr.arguments.insertLast(make_lit(what));
 
@@ -233,27 +233,27 @@ Expression@ make_say_expr(string who, string what) {
 }
 
 array<Expression@>@ make_test_dialogue_expression_array() {
-    /*Expression@ calc = make_native_call_expr("sub_test");
+    /*Expression@ calc = make_function_call("sub_test");
     calc.arguments.insertLast(make_lit(6.0f));
     calc.arguments.insertLast(make_lit(3.0f));
 
-    Expression@ wait_for = make_native_call_expr("wait");
+    Expression@ wait_for = make_function_call("wait");
     wait_for.arguments.insertLast(calc);*/
 
-    Expression@ print_name = make_native_call_expr("print_str");
+    Expression@ print_name = make_function_call("print_str");
     print_name.arguments.insertLast(make_ident("Entering Character"));
 
     array<Expression@>@ expressions = {
-        /*make_native_call_expr("log1"),
+        /*make_function_call("log1"),
         wait_for,
-        make_native_call_expr("log2"),
+        make_function_call("log2"),
         calc*/
-        make_native_call_expr("start_dialogue"),
+        make_function_call("start_dialogue"),
         make_say_expr("Bongus", "Mega hail to you my fiend friend"),
-        make_native_call_expr("wait_until_dialogue_line_is_complete"),
+        make_function_call("wait_until_dialogue_line_is_complete"),
         make_say_expr("Dingo", "Hi to u as well noob"),
-        make_native_call_expr("wait_until_dialogue_line_is_complete"),
-        make_native_call_expr("end_dialogue"),
+        make_function_call("wait_until_dialogue_line_is_complete"),
+        make_function_call("end_dialogue"),
         print_name
     };
 

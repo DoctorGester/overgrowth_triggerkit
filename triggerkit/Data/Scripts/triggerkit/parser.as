@@ -164,7 +164,7 @@ Expression@ parse_words_into_expression(Parser_State@ state) {
     } else if (word == KEYWORD_CALL) {
         string identifier_name = parser_next_word(state);
 
-        Expression@ call = make_native_call_expr(identifier_name);
+        Expression@ call = make_function_call(identifier_name);
         parse_words_into_expression_array(state, call.arguments);
 
         return call;
