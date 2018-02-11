@@ -28,9 +28,15 @@ enum Instruction_Type {
 
     INSTRUCTION_TYPE_POP,
 
+    INSTRUCTION_TYPE_CALL,
     INSTRUCTION_TYPE_NATIVE_CALL,
     INSTRUCTION_TYPE_JMP,
-    INSTRUCTION_TYPE_JMP_IF
+    INSTRUCTION_TYPE_JMP_IF,
+    INSTRUCTION_TYPE_RET,
+
+    INSTRUCTION_TYPE_RESERVE,
+
+    INSTRUCTION_TYPE_LAST
 }
 
 const uint MAX_STACK_SIZE = 256;
@@ -71,12 +77,11 @@ class Thread {
     array<Memory_Cell> stack;
     array<Instruction> code;
     uint stack_top = 0;
+    uint current_call_frame_pointer = 0;
     uint current_instruction = 0;
-    uint stack_offset = 0;
 
     bool has_finished_working;
     bool is_paused;
-    float is_waiting_until;
 
     int instructions_executed = 0;
 }
@@ -88,9 +93,8 @@ class Native_Call_Context {
         @this.thread = thread;
     }
 
-    void thread_sleep_for(float time) {
+    void thread_sleep() {
         this.thread.is_paused = true;
-        this.thread.is_waiting_until = the_time + time;
     }
 
     float take_number() {
@@ -103,6 +107,10 @@ class Native_Call_Context {
 
     void return_number(float value) {
         thread_stack_push_number(this.thread, value);
+    }
+
+    void return_bool(bool value) {
+        thread_stack_push_number(this.thread, bool_to_number(value));
     }
 }
 
@@ -122,18 +130,13 @@ Thread@ make_thread(Virtual_Machine@ vm) {
 }
 
 void set_thread_up_from_translation_context(Thread@ thread, Translation_Context@ translation_context) {
-    // TODO temporary code reserving space for locals
-    for (uint i = 0; i < translation_context.local_variable_index; i++) {
-        thread.code.insertAt(0, make_instruction(INSTRUCTION_TYPE_CONST_0));
-    }
-
     for (uint instruction_index = 0; instruction_index < translation_context.code.length(); instruction_index++) {
         thread.code.insertLast(translation_context.code[instruction_index]);
     }
 
     @thread.function_executors = translation_context.function_executors;
     @thread.constant_pool = translation_context.constants;
-    thread.stack_offset = translation_context.local_variable_index;
+    thread.current_instruction = translation_context.main_function_pointer;
 }
 
 string instruction_to_string(Instruction@ instruction) {
@@ -161,6 +164,10 @@ string instruction_to_string(Instruction@ instruction) {
         case INSTRUCTION_TYPE_JMP: return "JMP " + instruction.int_arg;
         case INSTRUCTION_TYPE_JMP_IF: return "JMP_IF " + instruction.int_arg;
         case INSTRUCTION_TYPE_NATIVE_CALL: return "NATIVE CALL " + instruction.int_arg;
+        case INSTRUCTION_TYPE_CALL: return "CALL " + instruction.int_arg;
+        case INSTRUCTION_TYPE_RET: return "RET";
+
+        case INSTRUCTION_TYPE_RESERVE: return "RESERVE " + instruction.int_arg;
     }
 
     return instruction.type + "";
@@ -229,6 +236,10 @@ namespace instructions {
         thread_stack_push(thread, thread_stack_peek(thread));
     }
 
+    void pop(Thread@ thread, Instruction@ instruction) {
+        thread_stack_pop(thread);
+    }
+
     void inc(Thread@ thread, Instruction@ instruction) {
         float value = thread_stack_pop(thread).number_value;
         thread_stack_push_number(thread, value + 1);
@@ -278,11 +289,11 @@ namespace instructions {
     }
 
     void load(Thread@ thread, Instruction@ instruction) {
-        thread_stack_push_number(thread, thread.stack[instruction.int_arg].number_value);
+        thread_stack_push_number(thread, thread.stack[thread.current_call_frame_pointer + instruction.int_arg].number_value);
     }
 
     void store(Thread@ thread, Instruction@ instruction) {
-        thread_stack_store(thread, instruction.int_arg, thread_stack_pop(thread));
+        thread_stack_store(thread, thread.current_call_frame_pointer + instruction.int_arg, thread_stack_pop(thread));
     }
 
     void jmp(Thread@ thread, Instruction@ instruction) {
@@ -295,6 +306,29 @@ namespace instructions {
         if (top) {
             thread.current_instruction += instruction.int_arg;
         }
+    }
+
+    void call(Thread@ thread, Instruction@ instruction) {
+        thread_stack_push_number(thread, thread.current_call_frame_pointer);
+        thread_stack_push_number(thread, thread.current_instruction + 1);
+
+        uint function_pointer = uint(thread.constant_pool[instruction.int_arg].number_value);
+
+        thread.current_call_frame_pointer = thread.stack_top;
+        thread.current_instruction = function_pointer;
+    }
+
+    void ret(Thread@ thread, Instruction@ instruction) {
+        // Means we are returning from main
+        if (thread.stack_top == 0) {
+            return;
+        }
+
+        uint return_address = uint(thread_stack_pop(thread).number_value);
+        uint call_frame_pointer = uint(thread_stack_pop(thread).number_value);
+
+        thread.current_instruction = return_address;
+        thread.current_call_frame_pointer = call_frame_pointer;
     }
 
     void add(Thread@ thread, Instruction@ instruction) {
@@ -316,6 +350,10 @@ namespace instructions {
 
         thread.function_executors[instruction.int_arg](context);
     }
+
+    void reserve(Thread@ thread, Instruction@ instruction) {
+        thread.stack_top += instruction.int_arg;
+    }
 }
 
 bool advance_thread_instruction_pointer_and_check_if_it_finished_working(Thread@ thread) {
@@ -332,17 +370,13 @@ void dump_thread_stack(Thread@ thread) {
     }
 }
 
-void exhaust_thread_stack(Thread@ thread) {
-    for (uint i = 0; i < thread.stack_offset; i++) {
-        thread_stack_pop(thread);
-    }
-}
-
 void thread_step_forward(Thread@ thread, Thread_Step_Details@ details) {
     uint previous_instruction_index = thread.current_instruction;
 
     Instruction@ current_instruction = @thread.code[thread.current_instruction];
     instruction_executors[current_instruction.type](thread, current_instruction);
+
+    // Log(info, instruction_to_string(current_instruction));
 
     bool has_advanced_during_the_execution = previous_instruction_index != thread.current_instruction; // TODO dirty, should return a struct from execute_...
     bool has_finished_working = has_advanced_during_the_execution ? 
@@ -359,7 +393,7 @@ array<Instruction_Executor@> instruction_executors;
 
 // TODO should be called once!
 void set_up_instruction_executors_temp() {
-    instruction_executors.resize(INSTRUCTION_TYPE_JMP_IF + 1);
+    instruction_executors.resize(INSTRUCTION_TYPE_LAST);
 
     @instruction_executors[INSTRUCTION_TYPE_ADD] = instructions::add;
     //@instruction_executors[INSTRUCTION_TYPE_MUL] = instructions::i_INSTRUCTION_TYPE_MUL;
@@ -388,11 +422,19 @@ void set_up_instruction_executors_temp() {
     @instruction_executors[INSTRUCTION_TYPE_LT] = instructions::lt;
     @instruction_executors[INSTRUCTION_TYPE_GT] = instructions::gt;
 
-    //@instruction_executors[INSTRUCTION_TYPE_POP] = instructions::i_INSTRUCTION_TYPE_POP;
+    @instruction_executors[INSTRUCTION_TYPE_POP] = instructions::pop;
 
     @instruction_executors[INSTRUCTION_TYPE_NATIVE_CALL] = instructions::native_call;
     @instruction_executors[INSTRUCTION_TYPE_JMP] = instructions::jmp;
     @instruction_executors[INSTRUCTION_TYPE_JMP_IF] = instructions::jmp_if;
+    @instruction_executors[INSTRUCTION_TYPE_CALL] = instructions::call;
+    @instruction_executors[INSTRUCTION_TYPE_RET] = instructions::ret;
+
+    @instruction_executors[INSTRUCTION_TYPE_RESERVE] = instructions::reserve;
+}
+
+void clean_up_instruction_executors_temp() {
+    instruction_executors.resize(0);
 }
 
 void update_vm_state(Virtual_Machine@ virtual_machine) {
@@ -404,19 +446,13 @@ void update_vm_state(Virtual_Machine@ virtual_machine) {
         Thread@ thread = virtual_machine.threads[thread_index];
 
         if (thread.is_paused) {
-            if (thread.is_waiting_until <= the_time) {
-                thread.is_paused = false;
-            }
-        }
-        
-        if (!thread.is_paused) {
+            thread.is_paused = false;
+        } else {
             while (true) {
                 thread_step_forward(thread, @details);
 
                 if (details.has_finished_working) {
                     Log(info, "Thread finished working :: Executed " + thread.instructions_executed + " instructions");
-
-                    exhaust_thread_stack(thread);
 
                     if (thread.stack_top > 0) {
                         dump_thread_stack(thread);
@@ -435,5 +471,5 @@ void update_vm_state(Virtual_Machine@ virtual_machine) {
         }
     }
 
-    instruction_executors.resize(0);
+    clean_up_instruction_executors_temp();
 }

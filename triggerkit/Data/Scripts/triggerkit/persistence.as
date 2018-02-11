@@ -200,7 +200,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
             }, " ");
         }
 
-        case EXPRESSION_NATIVE_CALL: {
+        case EXPRESSION_CALL: {
             return real_indent + join(array<string> = {
                 KEYWORD_CALL,
                 expression.identifier_name,
@@ -211,6 +211,14 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
         case EXPRESSION_REPEAT: {
             return real_indent + join(array<string> = {
                 KEYWORD_REPEAT,
+                serialize_expression_to_string(expression.value_expression, indent),
+                serialize_expression_block(expression.block_body, indent)
+            }, " ");
+        }
+
+        case EXPRESSION_WHILE: {
+            return real_indent + join(array<string> = {
+                KEYWORD_WHILE,
                 serialize_expression_to_string(expression.value_expression, indent),
                 serialize_expression_block(expression.block_body, indent)
             }, " ");

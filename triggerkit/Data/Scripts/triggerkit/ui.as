@@ -4,6 +4,8 @@ namespace icons {
     TextureAssetRef action_variable = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-SetVariables.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_logical = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Logical.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_other = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Nothing.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_wait = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Wait.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_dialogue = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Quest.png", TextureLoadFlags_NoMipmap);
 }
 
 class Trigger {
@@ -374,12 +376,20 @@ string expression_to_string(Expression@ expression) {
             }, " ");
         case EXPRESSION_IDENTIFIER: return colored_identifier(expression.identifier_name);
         case EXPRESSION_LITERAL: return literal_to_ui_string(expression);
-        case EXPRESSION_NATIVE_CALL: return native_call_to_string(expression);
+        case EXPRESSION_CALL: return native_call_to_string(expression);
         case EXPRESSION_REPEAT: {
             return join(array<string> = {
                 colored_keyword("Repeat"),
                 expression_to_string(expression.value_expression),
                 "times"
+            }, " ");
+        }
+
+        case EXPRESSION_WHILE: {
+            return join(array<string> = {
+                colored_keyword("While"),
+                expression_to_string(expression.value_expression),
+                "is " + literal_color + "true" + default_color + ", do"
             }, " ");
         }
 
@@ -445,7 +455,7 @@ void draw_expression_editor_popup(uint& expression_index, uint& popup_stack_leve
     ImGui_SetCursorPosX(offset);
     ImGui_Combo("##variable_selector", selected, variable_names);
 
-    bool is_a_function_call = expression.type == EXPRESSION_NATIVE_CALL;
+    bool is_a_function_call = expression.type == EXPRESSION_CALL;
     bool is_an_operator = expression.type == EXPRESSION_OPERATOR;
 
     if (ImGui_RadioButton("Function", is_a_function_call || is_an_operator)) {
@@ -619,7 +629,7 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
             break;
         }
 
-        case EXPRESSION_NATIVE_CALL: {
+        case EXPRESSION_CALL: {
             draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
 
             pre_expression_text("(");
@@ -640,21 +650,41 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
     }
 }
 
+// TODO speed! Could be array indexed
+// We could also just store Function_Definition references in expressions
+TextureAssetRef get_call_icon(Expression@ expression) {
+    for (uint function_index = 0; function_index < state.native_functions.length(); function_index++) {
+        Function_Definition@ function_definition = state.native_functions[function_index];
+        if (function_definition.function_name == expression.identifier_name) {
+            
+            switch (function_definition.function_category) {
+                case CATEGORY_WAIT: return icons::action_wait;
+                case CATEGORY_DIALOGUE: return icons::action_dialogue;
+
+                default: return icons::action_other;
+            }
+
+            break;
+        }
+    }
+
+    return icons::action_other;
+}
+
 void draw_expression_image(Expression@ expression) {
     ImGui_SetCursorPosY(ImGui_GetCursorPosY() + 1);
 
     switch (expression.type) {
-        case EXPRESSION_IF: {
-            ImGui_Image(icons::action_logical, vec2(16, 16));
-            break;
-        }
+        case EXPRESSION_IF:
+        case EXPRESSION_WHILE:
         case EXPRESSION_REPEAT: {
             ImGui_Image(icons::action_logical, vec2(16, 16));
             break;
         }
 
-        case EXPRESSION_NATIVE_CALL: {
-            ImGui_Image(icons::action_other, vec2(16, 16));
+        case EXPRESSION_CALL: {
+            ImGui_Image(get_call_icon(expression), vec2(16, 16));
+
             break;
         }
 
@@ -713,6 +743,7 @@ void draw_expressions(array<Expression@>@ expressions, uint& expression_index, u
                 break;
             }
 
+            case EXPRESSION_WHILE:
             case EXPRESSION_REPEAT: {
                 draw_expressions_in_a_tree_node("Actions", expression.block_body, expression_index, popup_stack_level);
                 break;

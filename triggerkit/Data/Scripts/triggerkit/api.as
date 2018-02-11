@@ -1,5 +1,11 @@
 funcdef void Native_Function_Executor(Native_Call_Context@ context);
 
+enum Function_Category {
+    CATEGORY_OTHER,
+    CATEGORY_DIALOGUE,
+    CATEGORY_WAIT
+}
+
 class Event_Definition {
     Event_Type type;
     string pretty_name;
@@ -33,10 +39,13 @@ class Event_Definition {
 class Function_Definition {
     array<Literal_Type> argument_types;
     Literal_Type return_type = LITERAL_TYPE_VOID;
+    Function_Category function_category = CATEGORY_OTHER;
     string pretty_name;
     string format;
     string function_name;
     Native_Function_Executor@ native_executor;
+    array<Expression@>@ user_code = {};
+    bool native = false;
 
     Function_Definition(){}
 
@@ -60,6 +69,11 @@ class Function_Definition {
         return this;
     }
 
+    Function_Definition@ category(Function_Category function_category) {
+        this.function_category = function_category;
+        return this;
+    }
+
     Function_Definition@ list_name(string pretty_name) {
         this.pretty_name = pretty_name;
         return this;
@@ -78,7 +92,20 @@ class Api_Builder {
         Function_Definition instance;
         instance.name(name);
         instance.returns(LITERAL_TYPE_VOID);
+        instance.native = true;
         @instance.native_executor = native_executor;
+
+        functions.insertLast(instance);
+
+        return instance;
+    }
+
+    Function_Definition@ func(string name, array<Expression@>@ user_code) {
+        Function_Definition instance;
+        instance.name(name);
+        instance.returns(LITERAL_TYPE_VOID);
+        instance.native = false;
+        @instance.user_code = user_code;
 
         functions.insertLast(instance);
 
@@ -134,6 +161,8 @@ void run_trigger(Trigger@ trigger) {
     Thread@ thread = make_thread(vm);
     set_thread_up_from_translation_context(thread, context);
 
+    print_bytecode(thread);
+
     vm.threads.insertLast(thread);
 }
 
@@ -174,10 +203,97 @@ Api_Builder@ build_api() {
         .fmt("Random number")
         .returns(LITERAL_TYPE_NUMBER);
 
+    builder
+        .func("get_game_time", api::get_game_time)
+        .list_name("Current game time")
+        .fmt("Current game time")
+        .returns(LITERAL_TYPE_NUMBER);
+
+    builder
+        .func("dialogue_say", api::dialogue_say)
+        .fmt("> %s: %s")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_STRING)
+        .takes(LITERAL_TYPE_STRING);
+
+    builder
+        .func("start_dialogue", api::start_dialogue)
+        .fmt("Show dialogue screen");
+
+    builder
+        .func("end_dialogue", api::end_dialogue)
+        .fmt("Hide dialogue screen");
+
+    builder
+        .func("is_in_dialogue", api::is_in_dialogue)
+        .fmt("Is waiting for a dialogue line to end");
+
+    builder
+        .func("sleep", api::sleep)
+        .category(CATEGORY_WAIT)
+        .fmt("Sleep until the next update");
+
+    builder
+        .func("wait_until_dialogue_line_is_complete", api::wait_until_dialogue_line_is_complete())
+        .category(CATEGORY_WAIT)
+        .fmt("Wait for the dialogue line to end");
+
+    builder
+        .func("wait", api::wait())
+        .category(CATEGORY_WAIT)
+        .fmt("Wait");
+
+    builder
+        .func("test", api::test_function())
+        .fmt("TEST");
+
     return builder;
 }
 
+namespace environment {
+    bool is_in_dialogue_mode = false;
+
+    void update() {
+        if (is_in_dialogue_mode) {
+            dialogue::update();
+        }
+    }
+
+    void draw() {
+        if (is_in_dialogue_mode) {
+            dialogue::draw_ui();
+        }
+    }
+
+    void draw2() {
+        if (is_in_dialogue_mode) {
+            dialogue::draw_text();
+        }
+    }
+}
+
 namespace api {
+    void dialogue_say(Native_Call_Context@ ctx) {
+        string who = ctx.take_string();
+        string what = ctx.take_string();
+
+        dialogue::say(who, what);
+    }
+
+    void start_dialogue(Native_Call_Context@ ctx) {
+        environment::is_in_dialogue_mode = true;
+
+        dialogue::reset_ui();
+    }
+
+    void end_dialogue(Native_Call_Context@ ctx) {
+        environment::is_in_dialogue_mode = false;
+    }
+
+    void is_in_dialogue(Native_Call_Context@ ctx) {
+        ctx.return_bool(dialogue::is_waiting_for_a_line_to_end);
+    }
+
     void log1(Native_Call_Context@ ctx) {
         Log(info, "log1");
     }
@@ -186,8 +302,8 @@ namespace api {
         Log(info, "log2");
     }
 
-    void wait(Native_Call_Context@ ctx) {
-        ctx.thread_sleep_for(1.0);
+    void sleep(Native_Call_Context@ ctx) {
+        ctx.thread_sleep();
     }
 
     void print(Native_Call_Context@ ctx) {
@@ -204,5 +320,35 @@ namespace api {
         string value = ctx.take_string();
 
         Log(info, "print_str: " + value);
+    }
+
+    void get_game_time(Native_Call_Context@ ctx) {
+        ctx.return_number(the_time);
+    }
+
+    array<Expression@>@ wait_until_dialogue_line_is_complete() {
+        return array<Expression@> = {
+            make_while(make_native_call_expr("is_in_dialogue"), array<Expression@> = {
+                make_native_call_expr("sleep")
+            })
+        };
+    }
+
+    array<Expression@>@ wait() {
+        Expression@ get_time = make_native_call_expr("get_game_time");
+        Expression@ target_time = make_op_expr(OPERATOR_ADD, get_time, make_lit(3.0f));
+        Expression@ target_time_declaration = make_declaration(LITERAL_TYPE_NUMBER, "target_time", target_time);
+        Expression@ condition = make_op_expr(OPERATOR_LT, get_time, make_ident("target_time"));
+
+        return array<Expression@> = {
+            target_time_declaration,
+            make_while(condition, array<Expression@> = {
+                make_native_call_expr("sleep")
+            })
+        };
+    }
+
+    array<Expression@>@ test_function() {
+        return make_test_expression_array();
     }
 }

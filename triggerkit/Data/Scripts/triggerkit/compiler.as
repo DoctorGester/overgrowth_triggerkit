@@ -2,13 +2,20 @@ class Translation_Context {
     array<Function_Definition@>@ function_definitions;
 
     dictionary native_function_indices;
-    dictionary local_variable_indices; // TODO this is incorrect because it's not hierarchical, this should be remade into a stack
-    uint local_variable_index = 0;
+    dictionary user_function_indices;
+    array<Function_Translation_Unit> translation_stack;
     array<Native_Function_Executor@> function_executors;
     array<Memory_Cell> constants;
     array<Instruction> code;
 
+    uint main_function_pointer = 0;
+
     uint expressions_translated = 0;
+}
+
+class Function_Translation_Unit {
+    uint local_variable_index = 0;
+    dictionary local_variable_indices; // TODO this is incorrect because it's not hierarchical, this should be remade into a stack
 }
 
 Memory_Cell@ make_memory_cell(float number_value) {
@@ -32,8 +39,26 @@ Memory_Cell@ make_memory_cell(string string_value) {
     return cell;
 }
 
+Function_Translation_Unit@ get_current_function_translation_unit(Translation_Context@ ctx) {
+    return ctx.translation_stack[ctx.translation_stack.length() - 1];
+}
+
+void push_function_translation_unit(Translation_Context@ ctx) {
+    Function_Translation_Unit unit;
+
+    ctx.translation_stack.insertLast(unit);
+}
+
+Function_Translation_Unit@ pop_function_translation_unit(Translation_Context@ ctx) {
+    Function_Translation_Unit@ last_value = get_current_function_translation_unit(ctx);
+    
+    ctx.translation_stack.removeLast();
+
+    return last_value;
+}
+
 uint get_local_index_and_advance(Translation_Context@ ctx) {
-    return ctx.local_variable_index++;
+    return get_current_function_translation_unit(ctx).local_variable_index++;
 }
 
 uint find_or_save_number_const(Translation_Context@ ctx, float value) {
@@ -62,7 +87,7 @@ uint find_or_save_string_const(Translation_Context@ ctx, string value) {
     return new_index;
 }
 
-Function_Definition@ find_native_function_definition(Translation_Context@ ctx, string name) {
+Function_Definition@ find_function_definition(Translation_Context@ ctx, string name) {
     for (uint function_index = 0; function_index < ctx.function_definitions.length(); function_index++) {
         if (ctx.function_definitions[function_index].function_name == name) {
             return ctx.function_definitions[function_index];
@@ -72,19 +97,11 @@ Function_Definition@ find_native_function_definition(Translation_Context@ ctx, s
     return null;
 }
 
-Function_Definition@ find_or_declare_native_function(Translation_Context@ ctx, string name, uint& function_index) {
-    // TODO speed! ctx.native_function_indices.exists(name) is enough to resolve an index!
-    Function_Definition@ function_definition = find_native_function_definition(ctx, name);
-
-    if (function_definition is null) {
-        Log(error, "Function not found in the API: " + name);
-        assert(false);
-    }
+uint find_or_declare_native_function_index(Translation_Context@ ctx, Function_Definition@ function_definition) {
+    string name = function_definition.function_name;
 
     if (ctx.native_function_indices.exists(name)) {
-        function_index = uint(ctx.native_function_indices[name]);
-
-        return function_definition;
+        return uint(ctx.native_function_indices[name]);
     }
 
     uint new_index = ctx.function_executors.length();
@@ -92,15 +109,26 @@ Function_Definition@ find_or_declare_native_function(Translation_Context@ ctx, s
     ctx.native_function_indices[name] = new_index;
     ctx.function_executors.insertLast(function_definition.native_executor);
 
-    function_index = new_index;
+    return new_index;
+}
 
-    return function_definition;
+uint find_user_function_index(Translation_Context@ ctx, Function_Definition@ function_definition) {
+    string name = function_definition.function_name;
+
+    if (ctx.user_function_indices.exists(name)) {
+        return uint(ctx.user_function_indices[name]);
+    }
+
+    Log(error, "Function index not found: " + function_definition.function_name);
+    assert(false);
+
+    return 0;
 }
 
 uint declare_local_variable_and_advance(Translation_Context@ ctx, string name) {
     uint new_index = get_local_index_and_advance(ctx);
 
-    ctx.local_variable_indices[name] = new_index;
+    get_current_function_translation_unit(ctx).local_variable_indices[name] = new_index;
 
     return new_index;
 }
@@ -130,9 +158,11 @@ uint emit_placeholder_jmp_if_instruction(array<Instruction>@ target) {
 }
 
 uint find_variable_location(Translation_Context@ ctx, string name) {
-    assert(ctx.local_variable_indices.exists(name));
+    Function_Translation_Unit@ current_function_translation_unit = get_current_function_translation_unit(ctx);
 
-    return uint(ctx.local_variable_indices[name]);;
+    assert(current_function_translation_unit.local_variable_indices.exists(name));
+
+    return uint(current_function_translation_unit.local_variable_indices[name]);;
 }
 
 Instruction_Type operator_type_to_instruction_type(Operator_Type operator_type) {
@@ -146,6 +176,26 @@ Instruction_Type operator_type_to_instruction_type(Operator_Type operator_type) 
 
     Log(error, "Unhandled operator type " + operator_type);
     return INSTRUCTION_TYPE_ADD;
+}
+
+uint emit_user_function(Translation_Context@ ctx, array<Expression@>@ expressions) {
+    uint function_location = ctx.code.length();
+
+    push_function_translation_unit(ctx);
+
+    uint reserve_location = ctx.code.length();
+    emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE), ctx.code); 
+    emit_block(ctx, expressions);
+    
+    Function_Translation_Unit@ popped_unit = pop_function_translation_unit(ctx);
+
+    uint function_reserved_space = popped_unit.local_variable_index;
+    emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE, -function_reserved_space), ctx.code); 
+    ctx.code[reserve_location].int_arg = function_reserved_space;
+
+    emit_instruction(make_instruction(INSTRUCTION_TYPE_RET), ctx.code);
+
+    return function_location;
 }
 
 void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, bool is_parent_a_block = false) {
@@ -281,16 +331,35 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             break;
         }
 
-        case EXPRESSION_NATIVE_CALL: {
-            uint function_index = 0;
+        case EXPRESSION_CALL: {
+            Function_Definition@ function_definition = find_function_definition(ctx, expression.identifier_name);
 
-            Function_Definition@ function_definition = find_or_declare_native_function(ctx, expression.identifier_name, function_index);
-
-            for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
-                emit_expression_bytecode(ctx, expression.arguments[argument_index]);
+            if (function_definition is null) {
+                Log(error, "Function not found in the API: " + expression.identifier_name);
+                assert(false);
             }
 
-            emit_instruction(make_native_call_instruction(function_index), target);
+            if (function_definition.native) {
+                for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
+                    emit_expression_bytecode(ctx, expression.arguments[argument_index]);
+                }
+
+                uint function_index = find_or_declare_native_function_index(ctx, function_definition);
+
+                Log(info, "Declared native " + function_definition.function_name + " as " + function_index);
+
+                emit_instruction(make_native_call_instruction(function_index), target);
+            } else {
+                for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
+                    emit_expression_bytecode(ctx, expression.arguments[argument_index]);
+                }
+
+                uint function_index = find_user_function_index(ctx, function_definition);
+
+                Log(info, "Declared " + function_definition.function_name + " as " + function_index);
+
+                emit_instruction(make_user_call_instruction(function_index), target);
+            }
 
             if (is_parent_a_block && function_definition.return_type != LITERAL_TYPE_VOID) {
                 emit_instruction(make_instruction(INSTRUCTION_TYPE_POP), target);
@@ -320,6 +389,20 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             break;
         }
 
+        case EXPRESSION_WHILE: {
+            uint jmp_into_condition_location = emit_placeholder_jmp_instruction(target);
+            uint while_block_start = target.length();
+
+            emit_block(ctx, expression.block_body);
+
+            target[jmp_into_condition_location].int_arg = target.length() - jmp_into_condition_location;
+
+            emit_expression_bytecode(ctx, expression.value_expression);
+            emit_instruction(make_jmp_if_instruction(while_block_start - target.length()), target);
+
+            break;
+        }
+
         default: {
             Log(error, "Ignored expression of type :: " + expression.type);
             break;
@@ -333,7 +416,27 @@ Translation_Context@ translate_expressions_into_bytecode(array<Expression@>@ exp
     Api_Builder@ api_builder = build_api();
     @translation_context.function_definitions = api_builder.functions;
 
-    emit_block(translation_context, expressions);
+    Log(info, "Compilation started");
+
+    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
+    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
+    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
+    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
+    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
+
+    for (uint function_index = 0; function_index < translation_context.function_definitions.length(); function_index++) {
+        Function_Definition@ function = translation_context.function_definitions[function_index];
+
+        if (!function.native) {
+            uint function_location = emit_user_function(translation_context, function.user_code);
+            uint const_id = find_or_save_number_const(translation_context, function_location);
+
+            translation_context.user_function_indices[function.function_name] = const_id;
+        }
+    }
+
+    // Emit main
+    translation_context.main_function_pointer = emit_user_function(translation_context, expressions);
 
     return translation_context;
 }
@@ -349,8 +452,23 @@ Instruction@ make_instruction(Instruction_Type type) {
     return instruction;
 }
 
+Instruction@ make_instruction(Instruction_Type type, int int_arg) {
+    Instruction instruction;
+    instruction.type = type;
+    instruction.int_arg = int_arg;
+
+    return instruction;
+}
+
 Instruction@ make_native_call_instruction(uint func_id) {
     Instruction@ instruction = make_instruction(INSTRUCTION_TYPE_NATIVE_CALL);
+    instruction.int_arg = func_id;
+
+    return instruction;
+}
+
+Instruction@ make_user_call_instruction(uint func_id) {
+    Instruction@ instruction = make_instruction(INSTRUCTION_TYPE_CALL);
     instruction.int_arg = func_id;
 
     return instruction;

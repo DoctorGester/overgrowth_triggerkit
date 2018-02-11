@@ -2,13 +2,16 @@
 // UI: Event parameters and event variables
 // UI/Compiler/VM: Global variables window
 // UI/Compiler/VM: User functions, implement wait in userland!
+// Style: replace most native_ calls and variable names, they are not native anymore mostly!
 // Compiler: Types in general, lol
 // Compiler: Compile into multiple targets with the global compilation context
-// Compiler: Actual function types, function calls, EXPRESSION_NATIVE_CALL should be just EXPRESSION_FUNCTION_CALL,
+// Compiler: Actual function types, function calls, EXPRESSION_CALL should be just EXPRESSION_FUNCTION_CALL,
 //           the compiler decides what is native and what is not, simple!
 // VM/Compiler: Resize stack dynamically or just figure out maximum stack size and set it to that
 // VM: Exceptions (divide by zero, etc)
 // VM: Array types
+// VM/Compiler: _RESERVE seems like a useless instruction? What are we doing wrong here exactly? There has to be
+//              a way to move the stack pointer without it                
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"
@@ -17,6 +20,7 @@
 #include "triggerkit/persistence.as"
 #include "triggerkit/api.as"
 #include "triggerkit/shared_definitions.as"
+#include "triggerkit/dialogue/dialogue.as"
 
 
 enum Expression_Type {
@@ -26,10 +30,11 @@ enum Expression_Type {
     EXPRESSION_IDENTIFIER,
     EXPRESSION_OPERATOR,
 
+    EXPRESSION_WHILE,
     EXPRESSION_REPEAT,
     EXPRESSION_IF,
 
-    EXPRESSION_NATIVE_CALL
+    EXPRESSION_CALL
 }
 
 enum Operator_Type {
@@ -143,7 +148,7 @@ Expression@ make_op_expr(Operator_Type type, Expression@ left, Expression@ right
 
 Expression@ make_native_call_expr(string name) {
     Expression@ expr = Expression();
-    expr.type = EXPRESSION_NATIVE_CALL;
+    expr.type = EXPRESSION_CALL;
     expr.identifier_name = name;
 
     return expr;
@@ -154,6 +159,15 @@ Expression@ make_assignment(string variable, Expression@ right) {
     expression.type = EXPRESSION_ASSIGNMENT;
     expression.identifier_name = variable;
     @expression.value_expression = right;
+
+    return expression;
+}
+
+Expression@ make_while(Expression@ condition, array<Expression@>@ body) {
+    Expression@ expression = Expression();
+    expression.type = EXPRESSION_WHILE;
+    @expression.value_expression = condition;
+    expression.block_body = body;
 
     return expression;
 }
@@ -196,8 +210,8 @@ array<Expression@>@ make_test_expression_array() {
     };
 
     condition.else_block_body = array<Expression@> = {
-        log2
-        //wait
+        log2,
+        wait
     };
 
     Expression@ condition2 = Expression();
@@ -231,6 +245,28 @@ array<Expression@>@ make_test_expression_array() {
     return expressions;
 }
 
+Expression@ make_say_expr(string who, string what) {
+    Expression@ expr = make_native_call_expr("dialogue_say");
+    expr.arguments.insertLast(make_lit(who));
+    expr.arguments.insertLast(make_lit(what));
+
+    return expr;
+}
+
+array<Expression@>@ make_test_dialogue_expression_array() {
+    array<Expression@>@ expressions = {
+        make_native_call_expr("start_dialogue"),
+        make_say_expr("Bongus", "Mega hail to you my fiend friend"),
+        make_native_call_expr("wait_until_dialogue_line_is_complete"),
+        make_native_call_expr("test"),
+        make_say_expr("Dingo", "Hi to u as well noob"),
+        make_native_call_expr("wait_until_dialogue_line_is_complete"),
+        make_native_call_expr("end_dialogue")
+    };
+
+    return expressions;
+}
+
 array<Expression@>@ make_simple_test_expression_array() {
     Expression@ condition = Expression();
     condition.type = EXPRESSION_IF;
@@ -256,10 +292,14 @@ array<Expression@>@ make_simple_test_expression_array() {
     return expressions;
 }
 
-void test_simple_code() {
-    Thread@ thread = make_thread(vm);
+void print_bytecode(Thread@ thread) {
+    for (uint x = 0; x < thread.code.length(); x++) {
+        Log(info, x + ": " + instruction_to_string(thread.code[x]));
+    }
+}
 
-    array<Expression@>@ expressions = make_test_expression_array();
+void test_simple_code(array<Expression@>@ expressions) {
+    Thread@ thread = make_thread(vm);
 
     Log(info, "----");
 
@@ -274,11 +314,7 @@ void test_simple_code() {
         Log(info, index + ": " + memory_cell_to_string(thread.constant_pool[index]));
     }
 
-    Log(info, "Stack offset: " + thread.stack_offset);
-
-    for (uint x = 0; x < thread.code.length(); x++) {
-        Log(info, x + ": " + instruction_to_string(thread.code[x]));
-    }
+    print_bytecode(thread);
 
     vm.threads.insertLast(thread);
 }
@@ -287,12 +323,9 @@ string memory_cell_to_string(Memory_Cell@ cell) {
     return cell.number_value + "/" + cell.string_value;
 }
 
-void ScriptReloaded() {
-    Init("");
-}
-
 void Init(string p_level_name) {
-    Log(info, "rld");
+    @vm = make_vm();
+    @state = load_trigger_state_from_level_params();
 }
 
 void ReceiveMessage(string message) {
@@ -302,8 +335,6 @@ void ReceiveMessage(string message) {
     }
 
     try_handle_event_from_message(message);
-
-    //script.ReceiveMessage(msg);
 }
 
 // TODO remove testing stuff
@@ -311,7 +342,20 @@ string serialized = "";
 string serialized_and_then_deserialized = "";
 bool show_text_output = false;
 
+float fade_out_start;
+float fade_out_end = -1.0f;
+
+float fade_in_start;
+float fade_in_end = -1.0f;
+int controller_id = 0;
+
+void DrawGUI2() {
+    environment::draw2();
+}
+
 void DrawGUI() {
+    environment::draw();
+
     if (EditorModeActive()) {
         ImGui_Begin("My_Debug_Win", ImGuiWindowFlags_MenuBar);
 
@@ -328,12 +372,20 @@ void DrawGUI() {
             state.triggers.resize(0);
         }
 
-        if (ImGui_Button("Run test code")) {
-            test_simple_code();
+        if (ImGui_Button("Run test simple code")) {
+            test_simple_code(make_test_expression_array());
+        }
+
+        if (ImGui_Button("Run test dialogue code")) {
+            test_simple_code(make_test_dialogue_expression_array());
         }
 
         if (ImGui_Button("Populate first trigger with test code")) {
             state.triggers[0].content = make_test_expression_array();
+        }
+
+        if (ImGui_Button("Populate second trigger with dialogue code")) {
+            state.triggers[1].content = make_test_dialogue_expression_array();
         }
         
         if (ImGui_Button("Save and load code")) {
@@ -388,8 +440,14 @@ void DrawGUI() {
             if (vm.is_in_debugger_mode && vm.threads.length() > 0) {
                 Thread@ thread = vm.threads[0];
 
+                ImGui_Text("Is Paused: " + thread.is_paused);
+
                 if (ImGui_Button("Step forward")) {
+                    set_up_instruction_executors_temp();
+
                     thread_step_forward(thread, Thread_Step_Details());
+
+                    clean_up_instruction_executors_temp();
                 }
 
                 ImGui_ListBoxHeader("Code");
@@ -405,7 +463,9 @@ void DrawGUI() {
                 ImGui_ListBoxHeader("Stack");
 
                 for (uint i = 0; i < thread.stack_top; i++) {
-                    ImGui_Text(i + ": " + thread.stack[i].number_value);
+                    string clr = i == thread.current_call_frame_pointer ? "\x1B22FF11FF" : "";
+
+                    ImGui_Text(clr + i + ": " + memory_cell_to_string(thread.stack[i]));
                 }
 
                 ImGui_ListBoxFooter();
@@ -433,12 +493,14 @@ void DrawGUI() {
 }
 
 void Update(int paused) {
+    environment::update();
+
     if (!(vm is null)) {
         if (vm.threads.length() > 0) {
             if (!vm.is_in_debugger_mode) {
                 auto t = GetPerformanceCounter();
                 update_vm_state(vm);
-                Log(info, "Time :: " + get_time_delta_in_ms(t) + "ms");
+                //Log(info, "Time :: " + get_time_delta_in_ms(t) + "ms");
             }
         }
     }
@@ -452,6 +514,5 @@ void PreScriptReload() {
     @state = null;
 }
 
-void SetWindowDimensions(int w, int h)
-{
+void SetWindowDimensions(int w, int h) {
 }
