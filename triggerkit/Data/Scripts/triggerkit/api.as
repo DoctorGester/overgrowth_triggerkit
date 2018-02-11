@@ -38,6 +38,7 @@ class Event_Definition {
 
 class Function_Definition {
     array<Literal_Type> argument_types;
+    array<string> argument_names;
     Literal_Type return_type = LITERAL_TYPE_VOID;
     Function_Category function_category = CATEGORY_OTHER;
     string pretty_name;
@@ -51,6 +52,12 @@ class Function_Definition {
 
     Function_Definition@ takes(Literal_Type argument_type) {
         argument_types.insertLast(argument_type);
+        return this;
+    }
+
+    Function_Definition@ takes(Literal_Type argument_type, string argument_name) {
+        argument_types.insertLast(argument_type);
+        argument_names.insertLast(argument_name);
         return this;
     }
 
@@ -233,6 +240,8 @@ Api_Builder@ build_api() {
         .category(CATEGORY_WAIT)
         .fmt("Sleep until the next update");
 
+    // Userland functions
+
     builder
         .func("wait_until_dialogue_line_is_complete", api::wait_until_dialogue_line_is_complete())
         .category(CATEGORY_WAIT)
@@ -240,12 +249,17 @@ Api_Builder@ build_api() {
 
     builder
         .func("wait", api::wait())
-        .category(CATEGORY_WAIT)
-        .fmt("Wait");
+        .fmt("Wait for %s seconds")
+        .takes(LITERAL_TYPE_NUMBER, "seconds")
+        .category(CATEGORY_WAIT);
 
     builder
-        .func("test", api::test_function())
-        .fmt("TEST");
+        .func("sub_test", api::sub_func())
+        .fmt("Math: %s - %s")
+        .takes(LITERAL_TYPE_NUMBER, "left")
+        .takes(LITERAL_TYPE_NUMBER, "right")
+        .returns(LITERAL_TYPE_NUMBER)
+        .category(CATEGORY_WAIT);
 
     return builder;
 }
@@ -336,7 +350,7 @@ namespace api {
 
     array<Expression@>@ wait() {
         Expression@ get_time = make_native_call_expr("get_game_time");
-        Expression@ target_time = make_op_expr(OPERATOR_ADD, get_time, make_lit(3.0f));
+        Expression@ target_time = make_op_expr(OPERATOR_ADD, get_time, make_ident("seconds"));
         Expression@ target_time_declaration = make_declaration(LITERAL_TYPE_NUMBER, "target_time", target_time);
         Expression@ condition = make_op_expr(OPERATOR_LT, get_time, make_ident("target_time"));
 
@@ -348,7 +362,9 @@ namespace api {
         };
     }
 
-    array<Expression@>@ test_function() {
-        return make_test_expression_array();
+    array<Expression@>@ sub_func() {
+        return array<Expression@> = {
+            make_return(make_op_expr(OPERATOR_SUB, make_ident("left"), make_ident("right")))
+        };
     }
 }

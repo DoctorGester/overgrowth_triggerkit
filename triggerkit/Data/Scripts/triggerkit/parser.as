@@ -25,6 +25,7 @@ const string KEYWORD_REPEAT = "repeat";
 const string KEYWORD_WHILE = "while";
 const string KEYWORD_IF = "if";
 const string KEYWORD_ELSE = "else";
+const string KEYWORD_RETURN = "return";
 const string KEYWORD_START_BLOCK = "(";
 const string KEYWORD_END_BLOCK = ")";
 
@@ -167,6 +168,10 @@ Expression@ parse_words_into_expression(Parser_State@ state) {
         parse_words_into_expression_array(state, call.arguments);
 
         return call;
+    } else if (word == KEYWORD_RETURN) {
+        Expression@ value_expression = parse_words_into_expression(state);
+
+        return make_return(value_expression);
     } else if (word == KEYWORD_IF) {
         Expression@ value_expression = parse_words_into_expression(state);
 

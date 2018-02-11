@@ -208,6 +208,13 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
             }, " ");
         }
 
+        case EXPRESSION_RETURN: {
+            return real_indent + join(array<string> = {
+                KEYWORD_RETURN,
+                serialize_expression_to_string(expression.value_expression, indent)
+            }, " ");
+        }
+
         case EXPRESSION_REPEAT: {
             return real_indent + join(array<string> = {
                 KEYWORD_REPEAT,

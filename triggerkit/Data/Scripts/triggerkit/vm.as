@@ -33,6 +33,7 @@ enum Instruction_Type {
     INSTRUCTION_TYPE_JMP,
     INSTRUCTION_TYPE_JMP_IF,
     INSTRUCTION_TYPE_RET,
+    INSTRUCTION_TYPE_RETURN,
 
     INSTRUCTION_TYPE_RESERVE,
 
@@ -142,6 +143,7 @@ void set_thread_up_from_translation_context(Thread@ thread, Translation_Context@
 string instruction_to_string(Instruction@ instruction) {
     switch (instruction.type) {
         case INSTRUCTION_TYPE_ADD: return "ADD";
+        case INSTRUCTION_TYPE_SUB: return "SUB";
 
         case INSTRUCTION_TYPE_CONST_0: return "CONST 0";
         case INSTRUCTION_TYPE_CONST_1: return "CONST 1";
@@ -166,6 +168,7 @@ string instruction_to_string(Instruction@ instruction) {
         case INSTRUCTION_TYPE_NATIVE_CALL: return "NATIVE CALL " + instruction.int_arg;
         case INSTRUCTION_TYPE_CALL: return "CALL " + instruction.int_arg;
         case INSTRUCTION_TYPE_RET: return "RET";
+        case INSTRUCTION_TYPE_RETURN: return "RETURN";
 
         case INSTRUCTION_TYPE_RESERVE: return "RESERVE " + instruction.int_arg;
     }
@@ -309,13 +312,27 @@ namespace instructions {
     }
 
     void call(Thread@ thread, Instruction@ instruction) {
+        // TODO ugh! Dirty implicit constant
+        uint function_pointer = uint(thread.constant_pool[instruction.int_arg].number_value);
+        uint number_of_arguments = uint(thread.constant_pool[instruction.int_arg + 1].number_value);
+
+        Log(info, "CALL :: " + function_pointer + " :: " + number_of_arguments);
+
+        array<Memory_Cell> arguments_array_copy;
+
+        for (uint argument_index = 0; argument_index < number_of_arguments; argument_index++) {
+            arguments_array_copy.insertLast(thread_stack_pop(thread));
+        }
+
         thread_stack_push_number(thread, thread.current_call_frame_pointer);
         thread_stack_push_number(thread, thread.current_instruction + 1);
 
-        uint function_pointer = uint(thread.constant_pool[instruction.int_arg].number_value);
-
         thread.current_call_frame_pointer = thread.stack_top;
         thread.current_instruction = function_pointer;
+
+        for (uint argument_index = 0; argument_index < number_of_arguments; argument_index++) {
+            thread_stack_store(thread, thread.stack_top + argument_index, arguments_array_copy[argument_index]);
+        }
     }
 
     void ret(Thread@ thread, Instruction@ instruction) {
@@ -329,6 +346,12 @@ namespace instructions {
 
         thread.current_instruction = return_address;
         thread.current_call_frame_pointer = call_frame_pointer;
+    }
+
+    void ireturn(Thread@ thread, Instruction@ instruction) {
+        Memory_Cell@ return_value = thread_stack_pop(thread);
+
+        thread_stack_store(thread, thread.current_call_frame_pointer - 3, return_value);
     }
 
     void add(Thread@ thread, Instruction@ instruction) {
@@ -429,6 +452,7 @@ void set_up_instruction_executors_temp() {
     @instruction_executors[INSTRUCTION_TYPE_JMP_IF] = instructions::jmp_if;
     @instruction_executors[INSTRUCTION_TYPE_CALL] = instructions::call;
     @instruction_executors[INSTRUCTION_TYPE_RET] = instructions::ret;
+    @instruction_executors[INSTRUCTION_TYPE_RETURN] = instructions::ireturn;
 
     @instruction_executors[INSTRUCTION_TYPE_RESERVE] = instructions::reserve;
 }

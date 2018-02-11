@@ -1,12 +1,12 @@
 // UI: Conditions! You can compose conditions and actions into a single tree before passing them into the compiler
 // UI: Event parameters and event variables
 // UI/Compiler/VM: Global variables window
-// UI/Compiler/VM: User functions, implement wait in userland!
+// UI: User functions!
 // Style: replace most native_ calls and variable names, they are not native anymore mostly!
+// Compiler: Make the compiler multipass, currently can't call routines which were not parsed yet
 // Compiler: Types in general, lol
 // Compiler: Compile into multiple targets with the global compilation context
-// Compiler: Actual function types, function calls, EXPRESSION_CALL should be just EXPRESSION_FUNCTION_CALL,
-//           the compiler decides what is native and what is not, simple!
+// Compiler: Actual function types
 // VM/Compiler: Resize stack dynamically or just figure out maximum stack size and set it to that
 // VM: Exceptions (divide by zero, etc)
 // VM: Array types
@@ -21,52 +21,6 @@
 #include "triggerkit/api.as"
 #include "triggerkit/shared_definitions.as"
 #include "triggerkit/dialogue/dialogue.as"
-
-
-enum Expression_Type {
-    EXPRESSION_LITERAL,
-    EXPRESSION_DECLARATION,
-    EXPRESSION_ASSIGNMENT,
-    EXPRESSION_IDENTIFIER,
-    EXPRESSION_OPERATOR,
-
-    EXPRESSION_WHILE,
-    EXPRESSION_REPEAT,
-    EXPRESSION_IF,
-
-    EXPRESSION_CALL
-}
-
-enum Operator_Type {
-    OPERATOR_OR,
-    OPERATOR_AND,
-
-    OPERATOR_ADD,
-    OPERATOR_SUB,
-    OPERATOR_MUL,
-    OPERATOR_DIV,
-
-    OPERATOR_EQ,
-    OPERATOR_GT,
-    OPERATOR_LT,
-
-    OPERATOR_LAST
-}
-
-enum Literal_Type {
-    LITERAL_TYPE_VOID,
-    LITERAL_TYPE_NUMBER,
-    LITERAL_TYPE_STRING,
-    LITERAL_TYPE_BOOL,
-    LITERAL_TYPE_OBJECT,
-    LITERAL_TYPE_ITEM,
-    LITERAL_TYPE_HOTSPOT,
-    LITERAL_TYPE_CHARACTER,
-    LITERAL_TYPE_VECTOR,
-    LITERAL_TYPE_FUNCTION,
-    LITERAL_TYPE_ARRAY,
-    LITERAL_TYPE_LAST
-}
 
 class Expression {
     Expression_Type type;
@@ -113,6 +67,14 @@ Expression@ make_lit(string v) {
     expression.type = EXPRESSION_LITERAL;
     expression.literal_type = LITERAL_TYPE_STRING;
     expression.literal_value.string_value = v;
+
+    return expression;
+}
+
+Expression@ make_return(Expression@ value) {
+    Expression expression;
+    expression.type = EXPRESSION_RETURN;
+    @expression.value_expression = value;
 
     return expression;
 }
@@ -254,11 +216,22 @@ Expression@ make_say_expr(string who, string what) {
 }
 
 array<Expression@>@ make_test_dialogue_expression_array() {
+    /*Expression@ calc = make_native_call_expr("sub_test");
+    calc.arguments.insertLast(make_lit(6.0f));
+    calc.arguments.insertLast(make_lit(3.0f));
+
+    Expression@ wait_for = make_native_call_expr("wait");
+    wait_for.arguments.insertLast(calc);*/
+
     array<Expression@>@ expressions = {
+        /*make_native_call_expr("log1"),
+        wait_for,
+        make_native_call_expr("log2"),
+        calc*/
+
         make_native_call_expr("start_dialogue"),
         make_say_expr("Bongus", "Mega hail to you my fiend friend"),
         make_native_call_expr("wait_until_dialogue_line_is_complete"),
-        make_native_call_expr("test"),
         make_say_expr("Dingo", "Hi to u as well noob"),
         make_native_call_expr("wait_until_dialogue_line_is_complete"),
         make_native_call_expr("end_dialogue")

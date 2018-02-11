@@ -1,3 +1,49 @@
+enum Expression_Type {
+    EXPRESSION_LITERAL,
+    EXPRESSION_DECLARATION,
+    EXPRESSION_ASSIGNMENT,
+    EXPRESSION_IDENTIFIER,
+    EXPRESSION_OPERATOR,
+
+    EXPRESSION_WHILE,
+    EXPRESSION_REPEAT,
+    EXPRESSION_IF,
+    EXPRESSION_RETURN,
+
+    EXPRESSION_CALL
+}
+
+enum Operator_Type {
+    OPERATOR_OR,
+    OPERATOR_AND,
+
+    OPERATOR_ADD,
+    OPERATOR_SUB,
+    OPERATOR_MUL,
+    OPERATOR_DIV,
+
+    OPERATOR_EQ,
+    OPERATOR_GT,
+    OPERATOR_LT,
+
+    OPERATOR_LAST
+}
+
+enum Literal_Type {
+    LITERAL_TYPE_VOID,
+    LITERAL_TYPE_NUMBER,
+    LITERAL_TYPE_STRING,
+    LITERAL_TYPE_BOOL,
+    LITERAL_TYPE_OBJECT,
+    LITERAL_TYPE_ITEM,
+    LITERAL_TYPE_HOTSPOT,
+    LITERAL_TYPE_CHARACTER,
+    LITERAL_TYPE_VECTOR,
+    LITERAL_TYPE_FUNCTION,
+    LITERAL_TYPE_ARRAY,
+    LITERAL_TYPE_LAST
+}
+
 class Translation_Context {
     array<Function_Definition@>@ function_definitions;
 
@@ -16,6 +62,7 @@ class Translation_Context {
 class Function_Translation_Unit {
     uint local_variable_index = 0;
     dictionary local_variable_indices; // TODO this is incorrect because it's not hierarchical, this should be remade into a stack
+    Function_Definition@ definition;
 }
 
 Memory_Cell@ make_memory_cell(float number_value) {
@@ -43,8 +90,10 @@ Function_Translation_Unit@ get_current_function_translation_unit(Translation_Con
     return ctx.translation_stack[ctx.translation_stack.length() - 1];
 }
 
-void push_function_translation_unit(Translation_Context@ ctx) {
+void push_function_translation_unit(Translation_Context@ ctx, Function_Definition@ function_definition) {
     Function_Translation_Unit unit;
+
+    @unit.definition = function_definition;
 
     ctx.translation_stack.insertLast(unit);
 }
@@ -178,10 +227,17 @@ Instruction_Type operator_type_to_instruction_type(Operator_Type operator_type) 
     return INSTRUCTION_TYPE_ADD;
 }
 
-uint emit_user_function(Translation_Context@ ctx, array<Expression@>@ expressions) {
+uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_definition, array<Expression@>@ expressions) {
     uint function_location = ctx.code.length();
 
-    push_function_translation_unit(ctx);
+    push_function_translation_unit(ctx, function_definition);
+
+    // TODO dirty, function can be anonymous but still contain arguments!
+    if (function_definition !is null) {
+        for (uint argument_index = 0; argument_index < function_definition.argument_names.length(); argument_index++) {
+            declare_local_variable_and_advance(ctx, function_definition.argument_names[argument_index]);
+        }
+    }
 
     uint reserve_location = ctx.code.length();
     emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE), ctx.code); 
@@ -205,7 +261,6 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
-            // TODO if literal type == double/string then storeconst and load
             switch (expression.literal_type) {
                 case LITERAL_TYPE_NUMBER: {
                     float value = expression.literal_value.number_value;
@@ -350,13 +405,18 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
                 emit_instruction(make_native_call_instruction(function_index), target);
             } else {
-                for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
-                    emit_expression_bytecode(ctx, expression.arguments[argument_index]);
-                }
-
                 uint function_index = find_user_function_index(ctx, function_definition);
 
                 Log(info, "Declared " + function_definition.function_name + " as " + function_index);
+
+                // TODO Is this the right way to reserve space for a return value?
+                if (function_definition.return_type != LITERAL_TYPE_VOID) {
+                    emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
+                }
+
+                for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
+                    emit_expression_bytecode(ctx, expression.arguments[argument_index]);
+                }
 
                 emit_instruction(make_user_call_instruction(function_index), target);
             }
@@ -364,6 +424,13 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             if (is_parent_a_block && function_definition.return_type != LITERAL_TYPE_VOID) {
                 emit_instruction(make_instruction(INSTRUCTION_TYPE_POP), target);
             }
+
+            break;
+        }
+
+        case EXPRESSION_RETURN: {
+            emit_expression_bytecode(ctx, expression.value_expression);
+            emit_instruction(make_instruction(INSTRUCTION_TYPE_RETURN), target);
 
             break;
         }
@@ -428,15 +495,18 @@ Translation_Context@ translate_expressions_into_bytecode(array<Expression@>@ exp
         Function_Definition@ function = translation_context.function_definitions[function_index];
 
         if (!function.native) {
-            uint function_location = emit_user_function(translation_context, function.user_code);
+            uint function_location = emit_user_function(translation_context, function, function.user_code);
             uint const_id = find_or_save_number_const(translation_context, function_location);
+
+            // TODO Saving consts contigiously in memory, dirty! Possible solutions?
+            translation_context.constants.insertLast(make_memory_cell(function.argument_types.length));
 
             translation_context.user_function_indices[function.function_name] = const_id;
         }
     }
 
     // Emit main
-    translation_context.main_function_pointer = emit_user_function(translation_context, expressions);
+    translation_context.main_function_pointer = emit_user_function(translation_context, null, expressions);
 
     return translation_context;
 }
