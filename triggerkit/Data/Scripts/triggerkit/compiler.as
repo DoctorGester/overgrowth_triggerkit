@@ -61,8 +61,14 @@ class Translation_Context {
 
 class Function_Translation_Unit {
     uint local_variable_index = 0;
-    dictionary local_variable_indices; // TODO this is incorrect because it's not hierarchical, this should be remade into a stack
+    Variable_Scope@ variable_scope;
     Function_Definition@ definition;
+}
+
+class Variable_Scope {
+    Variable_Scope@ parent_scope;
+
+    dictionary local_variable_indices;
 }
 
 Memory_Cell@ make_memory_cell(float number_value) {
@@ -96,6 +102,21 @@ void push_function_translation_unit(Translation_Context@ ctx, Function_Definitio
     @unit.definition = function_definition;
 
     ctx.translation_stack.insertLast(unit);
+}
+
+void push_variable_scope(Translation_Context@ ctx) {
+    Function_Translation_Unit@ translation_unit = get_current_function_translation_unit(ctx);
+
+    Variable_Scope new_scope;
+    @new_scope.parent_scope = translation_unit.variable_scope;
+
+    @translation_unit.variable_scope = new_scope;
+}
+
+void pop_variable_scope(Translation_Context@ ctx) {
+    Function_Translation_Unit@ translation_unit = get_current_function_translation_unit(ctx);
+
+    @translation_unit.variable_scope = translation_unit.variable_scope.parent_scope;
 }
 
 Function_Translation_Unit@ pop_function_translation_unit(Translation_Context@ ctx) {
@@ -177,7 +198,7 @@ uint find_user_function_index(Translation_Context@ ctx, Function_Definition@ fun
 uint declare_local_variable_and_advance(Translation_Context@ ctx, string name) {
     uint new_index = get_local_index_and_advance(ctx);
 
-    get_current_function_translation_unit(ctx).local_variable_indices[name] = new_index;
+    get_current_function_translation_unit(ctx).variable_scope.local_variable_indices[name] = new_index;
 
     return new_index;
 }
@@ -187,9 +208,13 @@ void emit_instruction(Instruction@ instruction, array<Instruction>@ target) {
 }
 
 void emit_block(Translation_Context@ ctx, array<Expression@>@ expressions) {
+    push_variable_scope(ctx);
+
     for (uint block_expr_index = 0; block_expr_index < expressions.length(); block_expr_index++) {
         emit_expression_bytecode(ctx, expressions[block_expr_index], true);
     }
+
+    pop_variable_scope(ctx);
 }
 
 uint emit_placeholder_jmp_instruction(array<Instruction>@ target) {
@@ -206,12 +231,30 @@ uint emit_placeholder_jmp_if_instruction(array<Instruction>@ target) {
     return location;
 }
 
-uint find_variable_location(Translation_Context@ ctx, string name) {
+int find_variable_location_hierarchical(Variable_Scope@ in_scope, string name, bool& reached_root_scope) {
+    if (in_scope.local_variable_indices.exists(name)) {
+        if (in_scope.parent_scope is null) {
+            reached_root_scope = true;
+        }
+
+        return int(uint(in_scope.local_variable_indices[name])); // TODO is double cast necessary? Need testing
+    }
+
+    if (in_scope.parent_scope is null) {
+        return -1;
+    } else {
+        return find_variable_location_hierarchical(in_scope.parent_scope, name, reached_root_scope);
+    }
+}
+
+uint find_variable_location(Translation_Context@ ctx, string name, bool& reached_root_scope) {
     Function_Translation_Unit@ current_function_translation_unit = get_current_function_translation_unit(ctx);
 
-    assert(current_function_translation_unit.local_variable_indices.exists(name));
+    int variable_location = find_variable_location_hierarchical(current_function_translation_unit.variable_scope, name, reached_root_scope);
 
-    return uint(current_function_translation_unit.local_variable_indices[name]);;
+    assert(variable_location != -1);
+
+    return uint(variable_location);
 }
 
 Instruction_Type operator_type_to_instruction_type(Operator_Type operator_type) {
@@ -231,6 +274,7 @@ uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_
     uint function_location = ctx.code.length();
 
     push_function_translation_unit(ctx, function_definition);
+    push_variable_scope(ctx);
 
     // TODO dirty, function can be anonymous but still contain arguments!
     if (function_definition !is null) {
@@ -241,8 +285,12 @@ uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_
 
     uint reserve_location = ctx.code.length();
     emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE), ctx.code); 
-    emit_block(ctx, expressions);
-    
+
+    for (uint block_expr_index = 0; block_expr_index < expressions.length(); block_expr_index++) {
+        emit_expression_bytecode(ctx, expressions[block_expr_index], true);
+    }
+
+    pop_variable_scope(ctx);
     Function_Translation_Unit@ popped_unit = pop_function_translation_unit(ctx);
 
     uint function_reserved_space = popped_unit.local_variable_index;
@@ -293,8 +341,15 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         }
 
         case EXPRESSION_IDENTIFIER: {
-            uint slot = find_variable_location(ctx, expression.identifier_name);
+            bool is_global = false;
+            uint slot = find_variable_location(ctx, expression.identifier_name, is_global);
             emit_instruction(make_load_instruction(slot), target);
+
+            if (is_global) {
+                emit_instruction(make_load_instruction(slot), target);
+            } else {
+                emit_instruction(make_global_load_instruction(slot), target);
+            }
 
             break;
         }
@@ -308,10 +363,16 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         }
 
         case EXPRESSION_ASSIGNMENT: {
-            uint slot = find_variable_location(ctx, expression.identifier_name);
+            bool is_global = false;
+            uint slot = find_variable_location(ctx, expression.identifier_name, is_global);
 
             emit_expression_bytecode(ctx, expression.value_expression);
-            emit_instruction(make_store_instruction(slot), target);
+
+            if (is_global) {
+                emit_instruction(make_store_instruction(slot), target);
+            } else {
+                emit_instruction(make_global_store_instruction(slot), target);
+            }
 
             break;
         }
@@ -583,6 +644,20 @@ Instruction@ make_load_instruction(uint from_location) {
 
 Instruction@ make_store_instruction(uint to_location) {
     Instruction instruction = make_instruction(INSTRUCTION_TYPE_STORE);
+    instruction.int_arg = to_location;
+
+    return instruction;
+}
+
+Instruction@ make_global_load_instruction(uint from_location) {
+    Instruction instruction = make_instruction(INSTRUCTION_TYPE_GLOBAL_LOAD);
+    instruction.int_arg = from_location;
+
+    return instruction;
+}
+
+Instruction@ make_global_store_instruction(uint to_location) {
+    Instruction instruction = make_instruction(INSTRUCTION_TYPE_GLOBAL_STORE);
     instruction.int_arg = to_location;
 
     return instruction;

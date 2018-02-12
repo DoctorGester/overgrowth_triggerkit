@@ -17,6 +17,9 @@ enum Instruction_Type {
     INSTRUCTION_TYPE_LOAD,
     INSTRUCTION_TYPE_STORE,
 
+    INSTRUCTION_TYPE_GLOBAL_LOAD,
+    INSTRUCTION_TYPE_GLOBAL_STORE,
+
     INSTRUCTION_TYPE_ARRAY_LOAD,
     INSTRUCTION_TYPE_ARRAY_STORE,
 
@@ -41,6 +44,7 @@ enum Instruction_Type {
 }
 
 const uint MAX_STACK_SIZE = 256;
+const uint MEMORY_LIMIT_BYTES = 1024;
 
 funcdef void Instruction_Executor(Thread@ thread, Instruction@ instruction);
 
@@ -52,6 +56,9 @@ class Instruction {
 
 class Virtual_Machine {
     array<Thread> threads;
+    array<Memory_Cell> memory;
+
+    uint occupied_memory = 0;
 
     bool is_in_debugger_mode = false;
 }
@@ -117,6 +124,7 @@ class Native_Call_Context {
 
 Virtual_Machine@ make_vm() {
     Virtual_Machine vm;
+    vm.memory.resize(MEMORY_LIMIT_BYTES);
 
     return vm;
 }
@@ -150,8 +158,12 @@ string instruction_to_string(Instruction@ instruction) {
         case INSTRUCTION_TYPE_POP: return "POP";
 
         case INSTRUCTION_TYPE_LOAD_CONST: return "LOAD CONST " + instruction.int_arg;
+
         case INSTRUCTION_TYPE_LOAD: return "LOAD " + instruction.int_arg;
         case INSTRUCTION_TYPE_STORE: return "STORE " + instruction.int_arg;
+
+        case INSTRUCTION_TYPE_GLOBAL_LOAD: return "GLOBAL LOAD " + instruction.int_arg;
+        case INSTRUCTION_TYPE_GLOBAL_STORE: return "GLOBAL STORE " + instruction.int_arg;
 
         case INSTRUCTION_TYPE_EQ: return "EQ";
         case INSTRUCTION_TYPE_EQ_ZERO: return "EQ ZERO";
@@ -215,6 +227,12 @@ void thread_stack_push(Thread@ thread, Memory_Cell@ value) {
 
 void thread_stack_store(Thread@ thread, uint in_slot, Memory_Cell@ value) {
     Memory_Cell@ cell = thread.stack[in_slot];
+    cell.number_value = value.number_value;
+    cell.string_value = value.string_value;
+}
+
+void memory_store(Thread@ thread, uint in_slot, Memory_Cell@ value) {
+    Memory_Cell@ cell = thread.vm.memory[in_slot];
     cell.number_value = value.number_value;
     cell.string_value = value.string_value;
 }
@@ -298,6 +316,14 @@ namespace instructions {
 
     void store(Thread@ thread, Instruction@ instruction) {
         thread_stack_store(thread, thread.current_call_frame_pointer + instruction.int_arg, thread_stack_pop(thread));
+    }
+
+    void global_load(Thread@ thread, Instruction@ instruction) {
+        thread_stack_push(thread, thread.vm.memory[instruction.int_arg]);
+    }
+
+    void global_store(Thread@ thread, Instruction@ instruction) {
+        memory_store(thread, instruction.int_arg, thread_stack_pop(thread));
     }
 
     void jmp(Thread@ thread, Instruction@ instruction) {
@@ -436,6 +462,9 @@ void set_up_instruction_executors_temp() {
 
     @instruction_executors[INSTRUCTION_TYPE_LOAD] = instructions::load;
     @instruction_executors[INSTRUCTION_TYPE_STORE] = instructions::store;
+
+    @instruction_executors[INSTRUCTION_TYPE_GLOBAL_LOAD] = instructions::global_load;
+    @instruction_executors[INSTRUCTION_TYPE_GLOBAL_STORE] = instructions::global_store;
 
     //@instruction_executors[INSTRUCTION_TYPE_ARRAY_LOAD] = instructions::i_INSTRUCTION_TYPE_ARRAY_LOAD;
     //@instruction_executors[INSTRUCTION_TYPE_ARRAY_STORE] = instructions::i_INSTRUCTION_TYPE_ARRAY_STORE;
