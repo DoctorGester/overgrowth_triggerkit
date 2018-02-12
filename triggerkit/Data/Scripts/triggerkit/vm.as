@@ -241,6 +241,10 @@ float bool_to_number(bool bool_value) {
     return bool_value ? 1 : 0;
 }
 
+bool number_to_bool(float number_value) {
+    return number_value != 0;
+}
+
 namespace instructions {
     void const_0(Thread@ thread, Instruction@ instruction) {
         thread_stack_push_number(thread, 0);

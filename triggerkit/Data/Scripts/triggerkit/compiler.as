@@ -490,6 +490,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         }
 
         case EXPRESSION_RETURN: {
+            // TODO also emit a RET instruction there!
             emit_expression_bytecode(ctx, expression.value_expression);
             emit_instruction(make_instruction(INSTRUCTION_TYPE_RETURN), target);
 

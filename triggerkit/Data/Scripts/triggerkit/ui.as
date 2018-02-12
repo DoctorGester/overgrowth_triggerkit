@@ -1,6 +1,8 @@
 funcdef bool Function_Predicate(Function_Definition@ f);
 
 namespace icons {
+    TextureAssetRef image_blank = LoadTexture("Data/Images/triggerkit/ui/image_blank.png", TextureLoadFlags_NoMipmap);
+
     TextureAssetRef action_variable = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-SetVariables.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_logical = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Logical.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_other = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Nothing.png", TextureLoadFlags_NoMipmap);
@@ -30,6 +32,13 @@ class Trigger_Kit_State {
     int selected_trigger;
 
     array<Trigger@> triggers;
+    array<Variable> global_variables;
+}
+
+class Variable {
+    Literal_Type type;
+    Memory_Cell value;
+    string name;
 }
 
 // TODO unused
@@ -118,7 +127,7 @@ Trigger@ draw_trigger_list(float window_height) {
 
     ImGui_SameLine();
 
-    if (ImGui_Button("Rem##FFFF00FFove")) {
+    if (ImGui_Button("Rem")) {
         state.triggers.removeAt(uint(state.selected_trigger));
         state.selected_trigger = max(state.selected_trigger - 1, 0);
 
@@ -134,10 +143,11 @@ Trigger@ draw_trigger_list(float window_height) {
 
     ImGui_SameLine();
 
-    if (ImGui_Button("VM Reload")) {
-        @vm = make_vm();
-        @state = load_trigger_state_from_level_params();
+    if (ImGui_Button("Globals")) {
+        ImGui_OpenPopup("Globals###globals_popup");
     }
+
+    draw_globals_modal();
 
     ImGui_EndGroup();
 
@@ -176,6 +186,7 @@ void draw_trigger_kit() {
     }
 
     Trigger@ currentTrigger = draw_trigger_list(window_height);
+
     ImGui_SameLine();
 
     if (currentTrigger !is null) {
@@ -426,15 +437,19 @@ string expression_to_string(Expression@ expression) {
     return "not_implemented (" + expression.type + ")";
 }
 
+void pop_edited_expression(uint& popup_stack_level) {
+    state.edited_expressions.removeLast();
+    popup_stack_level--;
+}
+
 void draw_editor_popup_footer(uint& popup_stack_level) {
     ImGui_NewLine();
     ImGui_Separator();
     ImGui_NewLine();
 
     if (ImGui_Button("close###" + popup_stack_level)) {
-        state.edited_expressions.removeLast();
+        pop_edited_expression(popup_stack_level);
         ImGui_CloseCurrentPopup();
-        popup_stack_level--;
     }
 }
 
@@ -487,8 +502,6 @@ void draw_statement_editor_popup(uint& expression_index, uint& popup_stack_level
     draw_expression_as_broken_into_pieces(expression, expression_index, popup_stack_level);
 
     draw_editor_popup_footer(popup_stack_level);
-
-    ImGui_EndPopup();
 }
 
 void draw_expression_editor_popup(uint& expression_index, uint& popup_stack_level) {
@@ -530,11 +543,9 @@ void draw_expression_editor_popup(uint& expression_index, uint& popup_stack_leve
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
 
-    draw_editable_literal(state.edited_expressions[popup_stack_level - 1], expression_index);
+    draw_editable_literal(expression.literal_type, expression.literal_value, expression_index);
     
     draw_editor_popup_footer(popup_stack_level);
-
-    ImGui_EndPopup();
 }
 
 void draw_editable_expression(Expression@ expression, uint& expression_index, uint& popup_stack_level, bool parent_is_a_code_block = false) {
@@ -543,8 +554,10 @@ void draw_editable_expression(Expression@ expression, uint& expression_index, ui
         state.edited_expressions.insertLast(expression);
     }
 
+    bool is_open = true;
+
     ImGui_SetNextWindowPos(ImGui_GetWindowPos() + vec2(20, 20), ImGuiSetCond_Appearing);
-    if (ImGui_BeginPopupModal("Edit###Popup" + popup_stack_level, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui_BeginPopupModal("Edit###Popup" + popup_stack_level, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
         popup_stack_level++;
 
         if (parent_is_a_code_block) {
@@ -552,13 +565,17 @@ void draw_editable_expression(Expression@ expression, uint& expression_index, ui
         } else {
             draw_expression_editor_popup(expression_index, popup_stack_level);
         }
+
+        ImGui_EndPopup();
+    }
+
+    if (!is_open) {
+        pop_edited_expression(popup_stack_level);
     }
 }
 
-void draw_editable_literal(Expression@ expression, int index) {
-    Memory_Cell@ literal_value = expression.literal_value;
-
-    switch (expression.literal_type) {
+void draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value, int index) {
+    switch (literal_type) {
         case LITERAL_TYPE_NUMBER:
             ImGui_InputFloat("###LiteralFloat" + index, literal_value.number_value, 1);
             break;
@@ -570,10 +587,19 @@ void draw_editable_literal(Expression@ expression, int index) {
             }
 
             break;
-        case LITERAL_TYPE_BOOL:
-            ImGui_Text("Not implemented");
+        case LITERAL_TYPE_BOOL: {
+            bool value = number_to_bool(literal_value.number_value);
+
+            if (ImGui_Checkbox("###LiteralBool" + index, value)) {
+                literal_value.number_value = bool_to_number(value);
+            }
+
+            ImGui_SameLine();
+            ImGui_Text(value ? "True" : "False");
             // ImGui_Checkbox("###LiteralFloat" + index, literal_value.int_value);
             break;
+        }
+
         case LITERAL_TYPE_OBJECT:
             ImGui_Text("Object input here");
             break;
@@ -596,7 +622,7 @@ void draw_editable_literal(Expression@ expression, int index) {
     }
 }
 
-void draw_type_selector(Expression@ expression, string text_label, Literal_Type limit_to) {
+void draw_type_selector(Literal_Type& input_type, string text_label, Literal_Type limit_to) {
     array<Literal_Type> all_types;
 
     if (limit_to != 0) {
@@ -614,7 +640,7 @@ void draw_type_selector(Expression@ expression, string text_label, Literal_Type 
     int selected = -1;
 
     for (uint index = 0; index < all_types.length(); index++) {
-        if (all_types[index] == expression.literal_type) {
+        if (all_types[index] == input_type) {
             selected = index;
         }
 
@@ -622,7 +648,7 @@ void draw_type_selector(Expression@ expression, string text_label, Literal_Type 
     }
 
     if (ImGui_Combo(text_label, selected, type_names)) {
-        expression.literal_type = all_types[selected];
+        input_type = all_types[selected];
     }
 
     ImGui_SameLine();
@@ -682,7 +708,7 @@ void draw_function_call_as_broken_into_pieces(Expression@ expression, uint& expr
 void draw_expression_as_broken_into_pieces(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
-            draw_editable_literal(expression, expression_index);
+            draw_editable_literal(expression.literal_type, expression.literal_value, expression_index);
             //ImGui_Button(literal_to_ui_string(expression));
             break;
         }
@@ -717,7 +743,7 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
 
         case EXPRESSION_DECLARATION: {
             pre_expression_text(colored_keyword("Declare"));
-            draw_type_selector(expression, "", Literal_Type(0));
+            draw_type_selector(expression.literal_type, "", Literal_Type(0));
             draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
             pre_expression_text("=");
             draw_editable_expression(expression.value_expression, expression_index, popup_stack_level);
@@ -893,4 +919,132 @@ void draw_trigger_content(Trigger@ current_trigger) {
     draw_expressions_in_a_tree_node("Actions", current_trigger.actions, expression_index, popup_stack_level);
 
     ImGui_EndGroup();
+}
+
+// Big SHack!
+float get_text_width(string text) {
+    vec2 cursor_position = ImGui_GetCursorPos();
+
+    ImGui_TextColored(vec4(), text);
+    ImGui_SameLine();
+
+    float new_x = ImGui_GetCursorPosX();
+
+    ImGui_SetCursorPos(cursor_position);
+
+    return new_x - cursor_position.x;
+}
+
+bool icon_button(string text, string id, TextureAssetRef icon) {
+    const float size_y = 28.0f;
+    float text_width = get_text_width(text);
+
+    vec2 cursor_position = ImGui_GetCursorPos();
+    vec2 image_size(16, 16);
+    float image_padding = size_y / 2.0f - (image_size.y / 2.0f);
+    vec2 size(image_padding * 3 + image_size.x + text_width, size_y);
+    vec2 image_position(image_padding, image_padding);
+
+    bool activated = ImGui_InvisibleButton(id, size);
+
+    vec2 cursor_position_after_button = ImGui_GetCursorPos();
+    vec4 color(0.35f, 0.40f, 0.61f, 0.62f);
+
+    if (ImGui_IsItemActive()) {
+        color = vec4(0.46f, 0.54f, 0.80f, 1.00f);
+    } else if (ImGui_IsItemHovered()) {
+        color = vec4(0.40f, 0.48f, 0.71f, 0.79f);
+    }
+
+    ImGui_SetCursorPos(cursor_position);
+    ImGui_Image(icons::image_blank, size, tint_color: color);
+
+    ImGui_SetCursorPos(cursor_position + image_position);
+    ImGui_Image(icon, image_size);
+
+    ImGui_SameLine();
+    ImGui_Text(text);
+
+    ImGui_SetCursorPos(cursor_position_after_button);
+
+    return activated;
+}
+
+void draw_globals_modal() {
+    bool is_open = true;
+
+    if (ImGui_BeginPopupModal("Globals###globals_popup", is_open)) {
+        float window_width = ImGui_GetWindowWidth();
+
+        ImGui_PushItemWidth(int(window_width) - 14);
+
+        ImGui_ListBoxHeader("###global_list", 16, 8);
+
+        float right_padding = 100;
+        float st = ImGui_GetCursorPosX();
+        float free_width = window_width - st - right_padding;
+
+        for (uint variable_index = 0; variable_index < state.global_variables.length(); variable_index++) {
+            Variable@ variable = state.global_variables[variable_index];
+
+            ImGui_AlignFirstTextHeightToWidgets();
+            ImGui_Image(icons::action_variable, vec2(16, 16));
+            ImGui_SameLine();
+
+            ImGui_PushItemWidth(int(free_width * 0.2));
+
+            ImGui_SetTextBuf(variable.name);
+            if (ImGui_InputText("###variable_name" + variable_index)) {
+                variable.name = ImGui_GetTextBuf();
+            }
+
+            ImGui_PopItemWidth();
+            ImGui_SameLine();
+
+            {
+                ImGui_PushItemWidth(int(free_width * 0.2));
+                
+                draw_type_selector(variable.type, "###type_selector" + variable_index, Literal_Type(0));
+
+                ImGui_PopItemWidth();
+                ImGui_SameLine();
+            }
+
+            {
+                float cursor_pre_checkbox = ImGui_GetCursorPosX();
+
+                bool a = false;
+                ImGui_Checkbox("Is array", a);
+                ImGui_SameLine();
+
+                ImGui_SetCursorPosX(cursor_pre_checkbox + free_width * 0.15f);
+            }
+
+            {
+                ImGui_PushItemWidth(int(free_width * 0.45));
+                draw_editable_literal(variable.type, variable.value, variable_index);
+                ImGui_PopItemWidth();
+            }
+
+            ImGui_SameLine();
+            ImGui_SetCursorPosX(window_width - 40);
+            
+            if (ImGui_Button("X###" + variable_index)) {
+                state.global_variables.removeAt(variable_index);
+
+                if (variable_index > 0) {
+                    variable_index--;
+                }
+            }
+        }
+
+        ImGui_ListBoxFooter();
+        ImGui_PopItemWidth();
+
+        if (icon_button("Add", "variable_add", icons::action_variable)) {
+            state.global_variables.insertLast(Variable());
+        }
+
+        ImGui_EndPopup();
+    }
 }
