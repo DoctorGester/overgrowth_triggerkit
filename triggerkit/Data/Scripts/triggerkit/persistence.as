@@ -1,50 +1,120 @@
 const string LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME = "TriggerKit/Triggers";
 
-string serialize_triggers_into_string(array<Trigger@>@ triggers) {
-    array<string> triggers_as_text;
+string serialize_trigger_state_into_text(Trigger_Kit_State@ state) {
+    array<Trigger@>@ triggers = state.triggers;
+    array<string> text_blocks;
+
+    uint total_variables = state.global_variables.length();
+    string global_variables_block = KEYWORD_VARIABLES + " " + KEYWORD_START_BLOCK;
+
+    global_variables_block += (total_variables == 0 ? "" : "\n");
+
+    for (uint variable_index = 0; variable_index < total_variables; variable_index++) {
+        Variable@ variable = state.global_variables[variable_index];
+        global_variables_block = global_variables_block + "\t"
+            + literal_type_to_serializeable_string(variable.type) + " "
+            + serializeable_string(variable.name) + " "
+            + literal_to_serializeable_string(variable.type, variable.value) + "\n";
+    }
+
+    global_variables_block += (total_variables == 0 ? " " : "") + KEYWORD_END_BLOCK;
+
+    text_blocks.insertLast(global_variables_block);
 
     for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
         Trigger@ trigger = state.triggers[trigger_index];
-        array<Expression@>@ code = trigger.actions;
 
         string trigger_metadata = KEYWORD_TRIGGER + " " + serializeable_string(trigger.name) + "\n" + serializeable_string(trigger.description);
         string trigger_as_text = join(array<string> = {
-            KEYWORD_TRIGGER + " " + serializeable_string(trigger.name),
-            KEYWORD_DESCRIPTION + " " + serializeable_string(trigger.description),
-            KEYWORD_CODE + " " + serialize_expression_block(code, "")
+            KEYWORD_TRIGGER + " " + serializeable_string(trigger.name) + " " + KEYWORD_START_BLOCK,
+            "\t" + KEYWORD_DESCRIPTION + " " + serializeable_string(trigger.description),
+            "\t" + KEYWORD_EVENT + " " + event_type_to_serializeable_string(trigger.event_type),
+            "\t" + KEYWORD_CONDITIONS + " " + serialize_expression_block(trigger.conditions, "\t"),
+            "\t" + KEYWORD_ACTIONS + " " + serialize_expression_block(trigger.actions, "\t"),
+            KEYWORD_END_BLOCK
         }, "\n");
 
-        triggers_as_text.insertLast(trigger_as_text);
+        text_blocks.insertLast(trigger_as_text);
     }
 
-    return join(triggers_as_text, "\n\n"); 
+    return join(text_blocks, "\n\n"); 
 }
 
-array<Trigger@> parse_triggers_from_string(string from_text) {
-    Parser_State state;
-    state.words = split_into_words_and_quoted_pieces(from_text);
+void parse_trigger_members(Parser_State@ state, Trigger@ for_trigger) {
+    parser_next_word(state);
 
-    array<Trigger@> triggers;
-    Trigger@ current_trigger;
-
-    while (!has_finished_parsing(state)) {
-        string word = parser_next_word(state);
-
-        if (word == KEYWORD_TRIGGER) {
-            @current_trigger = Trigger(parser_next_word(state));
-        } else {
-            assert(current_trigger !is null);
-
-            if (word == KEYWORD_DESCRIPTION) {
-                current_trigger.description = parser_next_word(state);
-            } else if (word == KEYWORD_CODE) {
-                parse_words_into_expression_array(state, current_trigger.actions);
-                triggers.insertLast(current_trigger);
-            }
-        }
+    if (state.words[state.current_word] == KEYWORD_END_BLOCK) {
+        state.current_word++;
+        return;
     }
 
-    return triggers;
+    while (true) {
+        string word = parser_next_word(state);
+
+        if (word == KEYWORD_DESCRIPTION) {
+            for_trigger.description = parser_next_word(state);
+        } else if (word == KEYWORD_ACTIONS) {
+            parse_words_into_expression_array(state, for_trigger.actions);
+        } else if (word == KEYWORD_CONDITIONS) {
+            parse_words_into_expression_array(state, for_trigger.conditions);
+        } else if (word == KEYWORD_EVENT) {
+            for_trigger.event_type = serializeable_string_to_event_type(parser_next_word(state));
+        }
+
+        if (word == KEYWORD_END_BLOCK) {
+            break;
+        }
+    }
+}
+
+void parse_variables(Parser_State@ state, array<Variable>@ variables) {
+    parser_next_word(state);
+
+    if (state.words[state.current_word] == KEYWORD_END_BLOCK) {
+        state.current_word++;
+        return;
+    }
+
+    while (true) {
+        string first_word = parser_next_word(state);
+
+        if (first_word == KEYWORD_END_BLOCK) {
+            break;
+        }
+
+        Literal_Type literal_type = serializeable_string_to_literal_type(first_word);
+        string identifier_name = parser_next_word(state);
+        Memory_Cell@ value = parse_literal_value_from_string(literal_type, parser_next_word(state)).literal_value;
+
+        // TODO make_variable
+        Variable variable;
+        variable.type = literal_type;
+        variable.name = identifier_name;
+        variable.value = value;
+
+        variables.insertLast(variable);
+    }
+}
+
+void parse_text_into_trigger_state(string from_text, Trigger_Kit_State@ state) {
+    Parser_State parser;
+    parser.words = split_into_words_and_quoted_pieces(from_text);
+
+    while (!has_finished_parsing(parser)) {
+        string word = parser_next_word(parser);
+
+        if (word == KEYWORD_VARIABLES) {
+            parse_variables(parser, state.global_variables);
+        }
+
+        if (word == KEYWORD_TRIGGER) {
+            Trigger@ new_trigger = Trigger(parser_next_word(parser));
+
+            parse_trigger_members(parser, new_trigger);
+
+            state.triggers.insertLast(new_trigger);
+        }
+    }
 }
 
 void save_trigger_state_into_level_params(Trigger_Kit_State@ state) {
@@ -54,7 +124,7 @@ void save_trigger_state_into_level_params(Trigger_Kit_State@ state) {
         params.Remove(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME);
     }
 
-    params.AddString(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME, serialize_triggers_into_string(state.triggers));
+    params.AddString(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME, serialize_trigger_state_into_text(state));
 }
 
 Trigger_Kit_State@ load_trigger_state_from_level_params() {
@@ -65,13 +135,13 @@ Trigger_Kit_State@ load_trigger_state_from_level_params() {
     if (params.HasParam(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME)) {
         string text = params.GetString(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME);
 
-        state.triggers = parse_triggers_from_string(text);
+        parse_text_into_trigger_state(text, state);
     }
 
     return state;
 }
 
-array<Trigger@> load_triggers_from_level_params() {
+/*array<Trigger@> load_triggers_from_level_params() {
     ScriptParams@ params = level.GetScriptParams();
 
     if (params.HasParam(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME)) {
@@ -81,7 +151,7 @@ array<Trigger@> load_triggers_from_level_params() {
     }
 
     return array<Trigger@>();
-}
+}*/
 
 string operator_type_to_serializeable_string(Operator_Type operator_type) {
     switch (operator_type) {
@@ -115,13 +185,13 @@ string literal_type_to_serializeable_string(Literal_Type literal_type) {
     return "unknown";
 }
 
-string literal_to_serializeable_string(Expression@ literal) {
-    switch (literal.literal_type) {
-        case LITERAL_TYPE_NUMBER: return literal.literal_value.number_value + "";
-        case LITERAL_TYPE_STRING: return serializeable_string(literal.literal_value.string_value);
+string literal_to_serializeable_string(Literal_Type literal_type, Memory_Cell@ literal_value) {
+    switch (literal_type) {
+        case LITERAL_TYPE_NUMBER: return literal_value.number_value + "";
+        case LITERAL_TYPE_STRING: return serializeable_string(literal_value.string_value);
 
         default: {
-            Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal.literal_type));
+            Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal_type));
         }
     }
 
@@ -196,7 +266,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
             return join(array<string> = {
                 KEYWORD_LITERAL,
                 literal_type_to_serializeable_string(expression.literal_type),
-                literal_to_serializeable_string(expression)
+                literal_to_serializeable_string(expression.literal_type, expression.literal_value)
             }, " ");
         }
 

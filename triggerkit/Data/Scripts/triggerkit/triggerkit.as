@@ -390,7 +390,8 @@ void DrawGUI() {
         }
         
         if (ImGui_Button("Save and load code")) {
-            state.triggers = parse_triggers_from_string(serialize_triggers_into_string(state.triggers));
+            save_trigger_state_into_level_params(state);
+            load_trigger_state_from_level_params();
         }
 
         if (ImGui_Button("Compile code")) {

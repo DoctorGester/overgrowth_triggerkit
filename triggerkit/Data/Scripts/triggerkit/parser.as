@@ -11,10 +11,15 @@ bool has_finished_parsing(Parser_State@ state) {
     return state.current_word >= state.words.length(); 
 }
 
+// Serialization
 const string KEYWORD_TRIGGER = "trigger";
 const string KEYWORD_DESCRIPTION = "description";
-const string KEYWORD_CODE = "code";
+const string KEYWORD_EVENT = "event";
+const string KEYWORD_ACTIONS = "actions";
+const string KEYWORD_CONDITIONS = "conditions";
+const string KEYWORD_VARIABLES = "variables";
 
+// Actual syntax
 const string KEYWORD_LITERAL = "$";
 const string KEYWORD_IDENTIFIER = "@";
 const string KEYWORD_OPERATOR = "op";
@@ -74,6 +79,7 @@ array<string> split_into_words_and_quoted_pieces(string text) {
     const uint8 double_quote = "\""[0];
     const uint8 back_slash = "\\"[0];
     const uint8 line_break = "\n"[0];
+    const uint8 tab = "\t"[0];
 
     for (uint index = 0; index < text.length(); index++) {
         bool should_append_this_character = true;
@@ -95,7 +101,7 @@ array<string> split_into_words_and_quoted_pieces(string text) {
                 should_append_this_character = false;
             }
 
-            if (character == space || character == line_break) {
+            if (character == space || character == line_break || character == tab) {
                 if (buffer.length() > 0 || was_in_quotes) {
                     result.insertLast(buffer);
                     buffer = "";
@@ -122,6 +128,19 @@ array<string> split_into_words_and_quoted_pieces(string text) {
     return result;
 }
 
+Expression@ parse_literal_value_from_string(Literal_Type literal_type, string value_as_string) {
+    switch (literal_type) {
+        case LITERAL_TYPE_NUMBER: return make_lit(parseFloat(value_as_string));
+        case LITERAL_TYPE_STRING: return make_lit(value_as_string);
+
+        default: {
+            Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal_type));
+        }
+    }
+
+    return null;
+}
+
 Expression@ parse_words_into_expression(Parser_State@ state) {
     string word = parser_next_word(state);
 
@@ -133,19 +152,9 @@ Expression@ parse_words_into_expression(Parser_State@ state) {
 
         return make_declaration(serializeable_string_to_literal_type(type_name), identifier_name, value_expression);
     } else if (word == KEYWORD_LITERAL) {
-        string type_name = parser_next_word(state);
-        string value_as_string = parser_next_word(state);
+        Literal_Type literal_type = serializeable_string_to_literal_type(parser_next_word(state));
 
-        Literal_Type literal_type = serializeable_string_to_literal_type(type_name);
-
-        switch (literal_type) {
-            case LITERAL_TYPE_NUMBER: return make_lit(parseFloat(value_as_string));
-            case LITERAL_TYPE_STRING: return make_lit(value_as_string);
-
-            default: {
-                Log(error, "Unsupported literal type " + type_name);
-            }
-        }
+        return parse_literal_value_from_string(literal_type, parser_next_word(state));
     } else if (word == KEYWORD_IDENTIFIER) {
         string identifier_name = parser_next_word(state);
 
