@@ -256,7 +256,11 @@ uint find_variable_location(Translation_Context@ ctx, string name, bool& reached
 
     int variable_location = find_variable_location_hierarchical(current_function_translation_unit.variable_scope, name, reached_root_scope);
 
-    assert(variable_location != -1);
+    if (variable_location == -1) {
+        PrintCallstack();
+        Log(error, "Variable " + name + " not found");
+        assert(false);
+    }
 
     return uint(variable_location);
 }
@@ -332,6 +336,16 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                 case LITERAL_TYPE_STRING: {
                     uint const_id = find_or_save_string_const(ctx, expression.literal_value.string_value);
                     emit_instruction(make_load_const_instruction(const_id), target);
+
+                    break;
+                }
+
+                case LITERAL_TYPE_BOOL: {
+                    if (number_to_bool(expression.literal_value.number_value)) {
+                        emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_1), target);
+                    } else {
+                        emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
+                    }
 
                     break;
                 }

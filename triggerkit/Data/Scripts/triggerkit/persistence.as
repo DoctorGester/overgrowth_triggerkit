@@ -177,6 +177,7 @@ string literal_to_serializeable_string(Literal_Type literal_type, Memory_Cell@ l
     switch (literal_type) {
         case LITERAL_TYPE_NUMBER: return literal_value.number_value + "";
         case LITERAL_TYPE_STRING: return serializeable_string(literal_value.string_value);
+        case LITERAL_TYPE_BOOL: return number_to_bool(literal_value.number_value) ? "True" : "False";
 
         default: {
             Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal_type));

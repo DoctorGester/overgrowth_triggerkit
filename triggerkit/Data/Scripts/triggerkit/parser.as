@@ -132,6 +132,7 @@ Expression@ parse_literal_value_from_string(Literal_Type literal_type, string va
     switch (literal_type) {
         case LITERAL_TYPE_NUMBER: return make_lit(parseFloat(value_as_string));
         case LITERAL_TYPE_STRING: return make_lit(value_as_string);
+        case LITERAL_TYPE_BOOL: return make_lit("True" == value_as_string);
 
         default: {
             Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal_type));

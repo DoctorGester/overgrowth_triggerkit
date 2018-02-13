@@ -72,7 +72,6 @@ class Memory_Cell {
     float number_value;
     array<string> string_array_value;
     array<float> number_array_value;
-    array<Instruction> code;
 }
 
 class Thread {
@@ -114,6 +113,10 @@ class Native_Call_Context {
 
     void return_bool(bool value) {
         thread_stack_push_number(this.thread, bool_to_number(value));
+    }
+
+    void return_string(string value) {
+        thread_stack_push_string(this.thread, value);
     }
 }
 
@@ -199,6 +202,10 @@ Memory_Cell@ thread_stack_peek(Thread@ thread) {
 
 void thread_stack_push_number(Thread@ thread, float number) {
     thread.stack[thread.stack_top++].number_value = number;
+}
+
+void thread_stack_push_string(Thread@ thread, string value) {
+    thread.stack[thread.stack_top++].string_value = value;
 }
 
 // TODO doesn't support a lot of other stuff

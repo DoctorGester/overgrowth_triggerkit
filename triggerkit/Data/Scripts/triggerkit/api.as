@@ -150,15 +150,13 @@ Function_Definition@ convert_trigger_to_function_definition(Trigger@ trigger) {
 
     Expression@ assembled_condition = trigger.conditions[0];
 
-    if (total_conditions > 1) {
-        for (uint condition_index = 1; condition_index < total_conditions; condition_index++) {
-            assembled_condition = make_op_expr(OPERATOR_AND, assembled_condition, trigger.conditions[condition_index]);
-        }
+    for (uint condition_index = 1; condition_index < total_conditions; condition_index++) {
+        @assembled_condition = make_op_expr(OPERATOR_AND, assembled_condition, trigger.conditions[condition_index]);
     }
 
     Expression@ condition_wrapper = make_if(assembled_condition, trigger.actions);
 
-    @result.user_code = array<Expression@> = { make_if(assembled_condition, trigger.actions) };
+    @result.user_code = array<Expression@> = { condition_wrapper };
 
     return result;
 }
@@ -195,8 +193,10 @@ void parse_parameters_for_event_type(Event_Type event_type, Parser_State@ parser
             string hotspot_id_as_string = parser_next_word(parser_state);
 
             string character_name = ReadObjectFromID(atoi(character_id_as_string)).GetName();
+            string region_name = ReadObjectFromID(atoi(hotspot_id_as_string)).GetName();
 
             parameters.insertLast(make_memory_cell(character_name));
+            parameters.insertLast(make_memory_cell(region_name));
 
             break;
         }
@@ -217,11 +217,10 @@ Thread@ run_trigger(Trigger@ trigger, array<Memory_Cell@>@ parameters) {
     Thread@ thread = make_thread(vm);
     thread.current_instruction = trigger.function_entry_pointer;
 
-    for (uint parameter_index = 0; parameter_index < parameters.length(); parameter_index++) {
-        uint slot = parameters.length() - parameter_index - 1;
-        thread_stack_store(thread, slot, parameters[parameter_index]);
+    for (uint slot = 0; slot < parameters.length(); slot++) {
+        thread_stack_store(thread, slot, parameters[slot]);
 
-        Log(info, "Storing :: " + memory_cell_to_string(parameters[parameter_index]) + " at " + slot);
+        Log(info, "Storing :: " + memory_cell_to_string(parameters[slot]) + " at " + slot);
     }
 
     vm.threads.insertLast(thread);
@@ -236,6 +235,7 @@ Api_Builder@ build_api() {
         .event(EVENT_CHARACTER_ENTERS_REGION)
         .list_name("Character enters a region")
         .defines("Entering Character", LITERAL_TYPE_STRING)
+        .defines("Region being entered", LITERAL_TYPE_STRING)
         .fmt("A character enters a region");
 
     builder
@@ -304,6 +304,37 @@ Api_Builder@ build_api() {
         .takes(LITERAL_TYPE_STRING)
         .returns(LITERAL_TYPE_BOOL);
 
+    builder
+        .func("are_bools_equal", api::are_bools_equal)
+        .list_name("Boolean comparison")
+        .fmt("{} is {}")
+        .takes(LITERAL_TYPE_BOOL)
+        .takes(LITERAL_TYPE_BOOL)
+        .returns(LITERAL_TYPE_BOOL);
+
+    builder
+        .func("string_concat", api::string_concat)
+        .list_name("String concatenation")
+        .fmt("{} + {}")
+        .takes(LITERAL_TYPE_STRING)
+        .takes(LITERAL_TYPE_STRING)
+        .returns(LITERAL_TYPE_STRING);
+
+    builder
+        .func("n2s", api::n2s)
+        .list_name("Number to text")
+        .fmt("{} as text")
+        .takes(LITERAL_TYPE_NUMBER)
+        .returns(LITERAL_TYPE_STRING);
+
+    builder
+        .func("nlt", api::nlt)
+        .list_name("Number LT")
+        .fmt("{} < {}")
+        .takes(LITERAL_TYPE_NUMBER)
+        .takes(LITERAL_TYPE_NUMBER)
+        .returns(LITERAL_TYPE_BOOL);
+
     // Userland functions
 
     builder
@@ -319,7 +350,7 @@ Api_Builder@ build_api() {
 
     builder
         .func("sub_test", api::sub_func())
-        .fmt("Math: {} - {}")
+        .fmt("{} - {}")
         .takes(LITERAL_TYPE_NUMBER, "left")
         .takes(LITERAL_TYPE_NUMBER, "right")
         .returns(LITERAL_TYPE_NUMBER)
@@ -351,8 +382,30 @@ namespace environment {
 }
 
 namespace api {
+    void nlt(Native_Call_Context@ ctx) {
+        float left = ctx.take_number();
+        float right = ctx.take_number();
+
+        ctx.return_bool(left < right);
+    }
+
+    void n2s(Native_Call_Context@ ctx) {
+        ctx.return_string(ctx.take_number() + "");
+    }
+
+    void string_concat(Native_Call_Context@ ctx) {
+        string left = ctx.take_string();
+        string right = ctx.take_string();
+
+        ctx.return_string(left + right);
+    }
+
     void are_strings_equal(Native_Call_Context@ ctx) {
         ctx.return_bool(ctx.take_string() == ctx.take_string());
+    }
+
+    void are_bools_equal(Native_Call_Context@ ctx) {
+        ctx.return_bool(ctx.take_number() == ctx.take_number());
     }
 
     void dialogue_say(Native_Call_Context@ ctx) {

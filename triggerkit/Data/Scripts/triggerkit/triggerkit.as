@@ -75,6 +75,15 @@ Expression@ make_lit(string v) {
     return expression;
 }
 
+Expression@ make_lit(bool v) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = LITERAL_TYPE_BOOL;
+    expression.literal_value.number_value = bool_to_number(v);
+
+    return expression;
+}
+
 Expression@ make_return(Expression@ value) {
     Expression expression;
     expression.type = EXPRESSION_RETURN;
@@ -360,6 +369,7 @@ void compile_everything() {
     
     Translation_Context translation_context;
     @translation_context.function_definitions = api_builder.functions;
+    translation_context.global_variable_scope = global_variables;
 
     compile_user_functions(translation_context);
 
