@@ -43,6 +43,43 @@ class Variable {
     string name;
 }
 
+class Ui_Frame_State {
+    uint expression_index;
+    uint popup_stack_level;
+
+    Ui_Variable_Scope@ top_scope;
+}
+
+class Ui_Variable_Scope {
+    Ui_Variable_Scope@ parent_scope;
+
+    array<Variable>@ variables;
+}
+
+void push_ui_variable_scope(Ui_Frame_State@ frame) {
+    Ui_Variable_Scope new_scope;
+    @new_scope.parent_scope = frame.top_scope;
+    @new_scope.variables = array<Variable>();
+
+    @frame.top_scope = new_scope;
+}
+
+void pop_ui_variable_scope(Ui_Frame_State@ frame) {
+    if (frame.top_scope !is null)
+    @frame.top_scope = frame.top_scope.parent_scope;
+}
+
+void collect_scope_variables(Ui_Variable_Scope@ from_scope, array<Variable@>@ target) {
+    // TODO Variable shadowing duplicates variables!
+    for (uint variable_index = 0; variable_index < from_scope.variables.length(); variable_index++) {
+        target.insertLast(from_scope.variables[variable_index]);
+    }
+
+    if (from_scope.parent_scope !is null) {
+        collect_scope_variables(from_scope.parent_scope, target);
+    }
+}
+
 // TODO unused
 Trigger@ get_current_selected_trigger() {
     if (uint(state.selected_trigger) >= state.triggers.length()) {
@@ -210,16 +247,16 @@ void post_expression_text(string text) {
     ImGui_Text(text);
 }
 
-void draw_expressions_in_a_tree_node(string title, array<Expression@>@ expressions, uint& expression_index, uint& popup_stack_level) {
-    expression_index++;
-    if (ImGui_TreeNodeEx(title + "###expression_block_" + expression_index, ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
-        draw_expressions(expressions, expression_index, popup_stack_level);
+void draw_expressions_in_a_tree_node(string title, array<Expression@>@ expressions, Ui_Frame_State@ frame) {
+    frame.expression_index++;
+    if (ImGui_TreeNodeEx(title + "###expression_block_" + frame.expression_index, ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
+        draw_expressions(expressions, frame);
         ImGui_TreePop();
     }
 }
 
-void draw_expression_and_continue_on_the_same_line(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
-    draw_editable_expression(expression, expression_index, popup_stack_level);
+void draw_expression_and_continue_on_the_same_line(Expression@ expression, Ui_Frame_State@ frame) {
+    draw_editable_expression(expression, frame);
     ImGui_SameLine();
 }
 
@@ -439,18 +476,18 @@ string expression_to_string(Expression@ expression) {
     return "not_implemented (" + expression.type + ")";
 }
 
-void pop_edited_expression(uint& popup_stack_level) {
+void pop_edited_expression(Ui_Frame_State@ frame) {
     state.edited_expressions.removeLast();
-    popup_stack_level--;
+    frame.popup_stack_level--;
 }
 
-void draw_editor_popup_footer(uint& popup_stack_level) {
+void draw_editor_popup_footer(Ui_Frame_State@ frame) {
     ImGui_NewLine();
     ImGui_Separator();
     ImGui_NewLine();
 
-    if (ImGui_Button("close###" + popup_stack_level)) {
-        pop_edited_expression(popup_stack_level);
+    if (ImGui_Button("close###" + frame.popup_stack_level)) {
+        pop_edited_expression(frame);
         ImGui_CloseCurrentPopup();
     }
 }
@@ -489,8 +526,8 @@ void draw_editor_popup_function_selector(Expression@ expression) {
     }
 }
 
-void draw_statement_editor_popup(uint& expression_index, uint& popup_stack_level) {
-    Expression@ expression = state.edited_expressions[popup_stack_level - 1];
+void draw_statement_editor_popup(Ui_Frame_State@ frame) {
+    Expression@ expression = state.edited_expressions[frame.popup_stack_level - 1];
 
     ImGui_Text("Action type");
 
@@ -501,18 +538,27 @@ void draw_statement_editor_popup(uint& expression_index, uint& popup_stack_level
     ImGui_NewLine();
 
     ImGui_Text("Action text");
-    draw_expression_as_broken_into_pieces(expression, expression_index, popup_stack_level);
+    draw_expression_as_broken_into_pieces(expression, frame);
 
-    draw_editor_popup_footer(popup_stack_level);
+    draw_editor_popup_footer(frame);
 }
 
-void draw_expression_editor_popup(uint& expression_index, uint& popup_stack_level) {
-    array<string> variable_names = { "var1" };
+void draw_expression_editor_popup(Ui_Frame_State@ frame) {
+    array<Variable@> scope_variables;
+
+    // TODO incorrect, doesn't consider variable declaration locations, bad!
+    collect_scope_variables(frame.top_scope, scope_variables);
+
+    array<string> variable_names;
     int selected = 0;
+
+    for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
+        variable_names.insertLast(scope_variables[variable_index].name);
+    }
 
     const int offset = 200;
 
-    Expression@ expression = state.edited_expressions[popup_stack_level - 1];
+    Expression@ expression = state.edited_expressions[frame.popup_stack_level - 1];
 
     if (ImGui_RadioButton("Variable", expression.type == EXPRESSION_IDENTIFIER)) {
         expression.type = EXPRESSION_IDENTIFIER;
@@ -535,7 +581,7 @@ void draw_expression_editor_popup(uint& expression_index, uint& popup_stack_leve
 
     if (is_a_function_call || is_an_operator) {
         ImGui_SetCursorPosX(offset);
-        draw_expression_as_broken_into_pieces(expression, expression_index, popup_stack_level);
+        draw_expression_as_broken_into_pieces(expression, frame);
     }
 
     if (ImGui_RadioButton("Value", expression.type == EXPRESSION_LITERAL)) {
@@ -545,34 +591,34 @@ void draw_expression_editor_popup(uint& expression_index, uint& popup_stack_leve
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
 
-    draw_editable_literal(expression.literal_type, expression.literal_value, expression_index);
+    draw_editable_literal(expression.literal_type, expression.literal_value, frame.expression_index);
     
-    draw_editor_popup_footer(popup_stack_level);
+    draw_editor_popup_footer(frame);
 }
 
-void draw_editable_expression(Expression@ expression, uint& expression_index, uint& popup_stack_level, bool parent_is_a_code_block = false) {
-    if (ImGui_Button(expression_to_string(expression) + "##" + expression_index)) {
-        ImGui_OpenPopup("Edit###Popup" + popup_stack_level);
+void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, bool parent_is_a_code_block = false) {
+    if (ImGui_Button(expression_to_string(expression) + "##" + frame.expression_index)) {
+        ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level);
         state.edited_expressions.insertLast(expression);
     }
 
     bool is_open = true;
 
     ImGui_SetNextWindowPos(ImGui_GetWindowPos() + vec2(20, 20), ImGuiSetCond_Appearing);
-    if (ImGui_BeginPopupModal("Edit###Popup" + popup_stack_level, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
-        popup_stack_level++;
+    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
+        frame.popup_stack_level++;
 
         if (parent_is_a_code_block) {
-            draw_statement_editor_popup(expression_index, popup_stack_level);
+            draw_statement_editor_popup(frame);
         } else {
-            draw_expression_editor_popup(expression_index, popup_stack_level);
+            draw_expression_editor_popup(frame);
         }
 
         ImGui_EndPopup();
     }
 
     if (!is_open) {
-        pop_edited_expression(popup_stack_level);
+        pop_edited_expression(frame);
     }
 }
 
@@ -656,23 +702,23 @@ void draw_type_selector(Literal_Type& input_type, string text_label, Literal_Typ
     ImGui_SameLine();
 }
 
-void draw_function_call_as_broken_into_pieces_simple(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
-    draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
+void draw_function_call_as_broken_into_pieces_simple(Expression@ expression, Ui_Frame_State@ frame) {
+    draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + frame.expression_index);
 
     pre_expression_text("(");
 
     for (uint argument_index = 0; argument_index < expression.arguments.length(); argument_index++) {
-        draw_expression_and_continue_on_the_same_line(expression.arguments[argument_index], expression_index, popup_stack_level);
+        draw_expression_and_continue_on_the_same_line(expression.arguments[argument_index], frame);
     }
 
     post_expression_text(")");
 }
 
-void draw_function_call_as_broken_into_pieces(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
+void draw_function_call_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@ frame) {
     Function_Definition@ function_definition = find_function_definition_by_function_name(expression.identifier_name);
 
     if (function_definition is null) {
-        draw_function_call_as_broken_into_pieces_simple(expression, expression_index, popup_stack_level);
+        draw_function_call_as_broken_into_pieces_simple(expression, frame);
         return;
     }
 
@@ -694,7 +740,7 @@ void draw_function_call_as_broken_into_pieces(Expression@ expression, uint& expr
             argument_found = argument_expression !is null;
 
             if (argument_found) {
-                draw_expression_and_continue_on_the_same_line(argument_expression, expression_index, popup_stack_level);
+                draw_expression_and_continue_on_the_same_line(argument_expression, frame);
             }
         }
 
@@ -707,10 +753,10 @@ void draw_function_call_as_broken_into_pieces(Expression@ expression, uint& expr
     ImGui_Text(pieces[pieces.length() - 1]);
 }
 
-void draw_expression_as_broken_into_pieces(Expression@ expression, uint& expression_index, uint& popup_stack_level) {
+void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@ frame) {
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
-            draw_editable_literal(expression.literal_type, expression.literal_value, expression_index);
+            draw_editable_literal(expression.literal_type, expression.literal_value, frame.expression_index);
             //ImGui_Button(literal_to_ui_string(expression));
             break;
         }
@@ -722,23 +768,23 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
 
         case EXPRESSION_OPERATOR: {
             pre_expression_text("(");
-            draw_expression_and_continue_on_the_same_line(expression.left_operand, expression_index, popup_stack_level);
+            draw_expression_and_continue_on_the_same_line(expression.left_operand, frame);
             pre_expression_text(operator_type_to_ui_string(expression.operator_type));
-            draw_editable_expression(expression.right_operand, expression_index, popup_stack_level);
+            draw_editable_expression(expression.right_operand, frame);
             post_expression_text(")");
             break;
         }
 
         case EXPRESSION_IF: {
             pre_expression_text("If");
-            draw_editable_expression(expression.value_expression, expression_index, popup_stack_level);
+            draw_editable_expression(expression.value_expression, frame);
 
             break;
         }
 
         case EXPRESSION_REPEAT: {
             pre_expression_text("Repeat");
-            draw_editable_expression(expression.value_expression, expression_index, popup_stack_level);
+            draw_editable_expression(expression.value_expression, frame);
             post_expression_text("times");
             break;
         }
@@ -746,28 +792,28 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, uint& express
         case EXPRESSION_DECLARATION: {
             pre_expression_text(colored_keyword("Declare"));
             draw_type_selector(expression.literal_type, "", Literal_Type(0));
-            draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
+            draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + frame.expression_index);
             pre_expression_text("=");
-            draw_editable_expression(expression.value_expression, expression_index, popup_stack_level);
+            draw_editable_expression(expression.value_expression, frame);
             break;
         }
 
         case EXPRESSION_ASSIGNMENT: {
             pre_expression_text("set");
-            draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + expression_index);
+            draw_button_and_continue_on_the_same_line(expression.identifier_name + "##" + frame.expression_index);
             pre_expression_text("=");
-            draw_editable_expression(expression.value_expression, expression_index, popup_stack_level);
+            draw_editable_expression(expression.value_expression, frame);
             break;
         }
 
         case EXPRESSION_CALL: {
-            draw_function_call_as_broken_into_pieces(expression, expression_index, popup_stack_level);
+            draw_function_call_as_broken_into_pieces(expression, frame);
 
             break;
         }
 
         default: {
-            ImGui_Button("not_implemented##" + expression_index);
+            ImGui_Button("not_implemented##" + frame.expression_index);
             break;
         }
     }
@@ -824,7 +870,7 @@ void draw_expression_image(Expression@ expression) {
     ImGui_SetCursorPosY(ImGui_GetCursorPosY() - 1);
 }
 
-void draw_expressions(array<Expression@>@ expressions, uint& expression_index, uint& popup_stack_level) {
+void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame) {
     if (expressions.length() == 0) {
         if (ImGui_Button("+##bluz")) {
             expressions.insertLast(make_function_call("dingo"));
@@ -832,13 +878,23 @@ void draw_expressions(array<Expression@>@ expressions, uint& expression_index, u
         }
     }
 
+    push_ui_variable_scope(frame);
+
     for (int index = 0; uint(index) < expressions.length(); index++) {
         Expression@ expression = expressions[uint(index)];
+
+        if (expression.type == EXPRESSION_DECLARATION) {
+            Variable variable;
+            variable.name = expression.identifier_name;
+            variable.type = expression.literal_type;
+
+            frame.top_scope.variables.insertLast(variable);
+        }
 
         vec2 cursor_start_pos = ImGui_GetCursorScreenPos() ;
 
         draw_expression_image(expression);
-        draw_editable_expression(expression, expression_index, popup_stack_level, true);
+        draw_editable_expression(expression, frame, true);
 
         vec2 hover_min = cursor_start_pos;
         vec2 hover_max = cursor_start_pos + vec2(400, 18);
@@ -864,20 +920,22 @@ void draw_expressions(array<Expression@>@ expressions, uint& expression_index, u
 
         switch (expression.type) {
             case EXPRESSION_IF: {
-                draw_expressions_in_a_tree_node("Then do", expression.block_body, expression_index, popup_stack_level);
-                draw_expressions_in_a_tree_node("Else do", expression.else_block_body, expression_index, popup_stack_level);
+                draw_expressions_in_a_tree_node("Then do", expression.block_body, frame);
+                draw_expressions_in_a_tree_node("Else do", expression.else_block_body, frame);
                 break;
             }
 
             case EXPRESSION_WHILE:
             case EXPRESSION_REPEAT: {
-                draw_expressions_in_a_tree_node("Actions", expression.block_body, expression_index, popup_stack_level);
+                draw_expressions_in_a_tree_node("Actions", expression.block_body, frame);
                 break;
             }
         }
 
-        expression_index++;
+        frame.expression_index++;
     }
+
+    pop_ui_variable_scope(frame);
 }
 
 void draw_trigger_content(Trigger@ current_trigger) {
@@ -901,8 +959,10 @@ void draw_trigger_content(Trigger@ current_trigger) {
 
     //auto ctx = script.CreateContext();
 
-    uint expression_index = 0;
-    uint popup_stack_level = 0;
+    Ui_Frame_State frame;
+    Ui_Variable_Scope global_scope;
+    @global_scope.variables = state.global_variables;
+    @frame.top_scope = global_scope;
 
     if (ImGui_TreeNodeEx("Event###event_block", ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
         int selected_event = 0;
@@ -917,8 +977,8 @@ void draw_trigger_content(Trigger@ current_trigger) {
         ImGui_TreePop();
     }
 
-    draw_expressions_in_a_tree_node("Conditions", current_trigger.conditions, expression_index, popup_stack_level);
-    draw_expressions_in_a_tree_node("Actions", current_trigger.actions, expression_index, popup_stack_level);
+    draw_expressions_in_a_tree_node("Conditions", current_trigger.conditions, frame);
+    draw_expressions_in_a_tree_node("Actions", current_trigger.actions, frame);
 
     ImGui_EndGroup();
 }
