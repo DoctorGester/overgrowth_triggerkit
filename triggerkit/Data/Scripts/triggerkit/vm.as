@@ -57,15 +57,13 @@ class Instruction {
 class Virtual_Machine {
     array<Thread> threads;
     array<Memory_Cell> memory;
+    array<Instruction> code;
+    array<Native_Function_Executor@>@ function_executors;
+    array<Memory_Cell>@ constant_pool;
 
     uint occupied_memory = 0;
 
     bool is_in_debugger_mode = false;
-}
-
-class Thread_Step_Details {
-    bool should_continue;
-    bool has_finished_working;
 }
 
 // Could have easily been a union, gg
@@ -74,22 +72,19 @@ class Memory_Cell {
     float number_value;
     array<string> string_array_value;
     array<float> number_array_value;
+    array<Instruction> code;
 }
 
 class Thread {
     Virtual_Machine@ vm;
 
-    array<Native_Function_Executor@>@ function_executors;
-    array<Memory_Cell>@ constant_pool;
-
     array<Memory_Cell> stack;
-    array<Instruction> code;
     uint stack_top = 0;
     uint current_call_frame_pointer = 0;
     uint current_instruction = 0;
 
-    bool has_finished_working;
-    bool is_paused;
+    bool has_finished_working = false;
+    bool is_paused = false;
 
     int instructions_executed = 0;
 }
@@ -136,16 +131,6 @@ Thread@ make_thread(Virtual_Machine@ vm) {
     thread.stack.resize(MAX_STACK_SIZE);
 
     return thread;
-}
-
-void set_thread_up_from_translation_context(Thread@ thread, Translation_Context@ translation_context) {
-    for (uint instruction_index = 0; instruction_index < translation_context.code.length(); instruction_index++) {
-        thread.code.insertLast(translation_context.code[instruction_index]);
-    }
-
-    @thread.function_executors = translation_context.function_executors;
-    @thread.constant_pool = translation_context.constants;
-    thread.current_instruction = translation_context.main_function_pointer;
 }
 
 string instruction_to_string(Instruction@ instruction) {
@@ -255,7 +240,7 @@ namespace instructions {
     }
 
     void load_const(Thread@ thread, Instruction@ instruction) {
-        thread_stack_push(thread, thread.constant_pool[instruction.int_arg]);
+        thread_stack_push(thread, thread.vm.constant_pool[instruction.int_arg]);
     }
 
     void dup(Thread@ thread, Instruction@ instruction) {
@@ -344,8 +329,8 @@ namespace instructions {
 
     void call(Thread@ thread, Instruction@ instruction) {
         // TODO ugh! Dirty implicit constant
-        uint function_pointer = uint(thread.constant_pool[instruction.int_arg].number_value);
-        uint number_of_arguments = uint(thread.constant_pool[instruction.int_arg + 1].number_value);
+        uint function_pointer = uint(thread.vm.constant_pool[instruction.int_arg].number_value);
+        uint number_of_arguments = uint(thread.vm.constant_pool[instruction.int_arg + 1].number_value);
 
         // Log(info, "CALL :: " + function_pointer + " :: " + number_of_arguments);
 
@@ -369,6 +354,8 @@ namespace instructions {
     void ret(Thread@ thread, Instruction@ instruction) {
         // Means we are returning from main
         if (thread.stack_top == 0) {
+            Log(info, "Returning from main");
+            thread.has_finished_working = true;
             return;
         }
 
@@ -402,18 +389,12 @@ namespace instructions {
     void native_call(Thread@ thread, Instruction@ instruction) {
         Native_Call_Context context(thread);
 
-        thread.function_executors[instruction.int_arg](context);
+        thread.vm.function_executors[instruction.int_arg](context);
     }
 
     void reserve(Thread@ thread, Instruction@ instruction) {
         thread.stack_top += instruction.int_arg;
     }
-}
-
-bool advance_thread_instruction_pointer_and_check_if_it_finished_working(Thread@ thread) {
-    thread.current_instruction++;
-
-    return thread.current_instruction == thread.code.length();
 }
 
 void dump_thread_stack(Thread@ thread) {
@@ -424,23 +405,23 @@ void dump_thread_stack(Thread@ thread) {
     }
 }
 
-void thread_step_forward(Thread@ thread, Thread_Step_Details@ details) {
+bool thread_step_forward(Thread@ thread) {
     uint previous_instruction_index = thread.current_instruction;
 
-    Instruction@ current_instruction = @thread.code[thread.current_instruction];
+    Instruction@ current_instruction = @thread.vm.code[thread.current_instruction];
     instruction_executors[current_instruction.type](thread, current_instruction);
 
     // Log(info, instruction_to_string(current_instruction));
 
     bool has_advanced_during_the_execution = previous_instruction_index != thread.current_instruction; // TODO dirty, should return a struct from execute_...
-    bool has_finished_working = has_advanced_during_the_execution ? 
-        thread.current_instruction == thread.code.length() : // TODO eugh! Condition hardcoding
-        advance_thread_instruction_pointer_and_check_if_it_finished_working(thread);
+
+    if (!has_advanced_during_the_execution) {
+        thread.current_instruction++;
+    }
 
     thread.instructions_executed++;
 
-    details.has_finished_working = has_finished_working;
-    details.should_continue = !thread.is_paused;
+    return !thread.is_paused;
 }
 
 array<Instruction_Executor@> instruction_executors;
@@ -496,8 +477,6 @@ void clean_up_instruction_executors_temp() {
 }
 
 void update_vm_state(Virtual_Machine@ virtual_machine) {
-    Thread_Step_Details details;
-
     set_up_instruction_executors_temp();
 
     for (uint thread_index = 0; thread_index < virtual_machine.threads.length(); thread_index++) {
@@ -507,9 +486,9 @@ void update_vm_state(Virtual_Machine@ virtual_machine) {
             thread.is_paused = false;
         } else {
             while (true) {
-                thread_step_forward(thread, @details);
+                bool should_continue = thread_step_forward(thread);
 
-                if (details.has_finished_working) {
+                if (thread.has_finished_working) {
                     Log(info, "Thread finished working :: Executed " + thread.instructions_executed + " instructions");
 
                     if (thread.stack_top > 0) {
@@ -522,7 +501,7 @@ void update_vm_state(Virtual_Machine@ virtual_machine) {
                     break;
                 }
 
-                if (!details.should_continue) {
+                if (!should_continue) {
                     break;
                 }
             }

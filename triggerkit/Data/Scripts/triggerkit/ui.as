@@ -17,6 +17,8 @@ class Trigger {
     array<Expression@> actions;
     Event_Type event_type = EVENT_CHARACTER_ENTERS_REGION;
 
+    uint function_entry_pointer;
+
     Trigger(string name) {
         this.name = name;
     }

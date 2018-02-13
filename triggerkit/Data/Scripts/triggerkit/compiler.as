@@ -53,9 +53,9 @@ class Translation_Context {
     array<Native_Function_Executor@> function_executors;
     array<Memory_Cell> constants;
     array<Instruction> code;
+    Variable_Scope global_variable_scope;
 
-    uint main_function_pointer = 0;
-
+    // Debug info
     uint expressions_translated = 0;
 }
 
@@ -109,6 +109,10 @@ void push_variable_scope(Translation_Context@ ctx) {
 
     Variable_Scope new_scope;
     @new_scope.parent_scope = translation_unit.variable_scope;
+
+    if (translation_unit.variable_scope is null) {
+        @new_scope.parent_scope = ctx.global_variable_scope;
+    }
 
     @translation_unit.variable_scope = new_scope;
 }
@@ -343,12 +347,11 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         case EXPRESSION_IDENTIFIER: {
             bool is_global = false;
             uint slot = find_variable_location(ctx, expression.identifier_name, is_global);
-            emit_instruction(make_load_instruction(slot), target);
 
             if (is_global) {
-                emit_instruction(make_load_instruction(slot), target);
-            } else {
                 emit_instruction(make_global_load_instruction(slot), target);
+            } else {
+                emit_instruction(make_load_instruction(slot), target);
             }
 
             break;
@@ -369,9 +372,9 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             emit_expression_bytecode(ctx, expression.value_expression);
 
             if (is_global) {
-                emit_instruction(make_store_instruction(slot), target);
-            } else {
                 emit_instruction(make_global_store_instruction(slot), target);
+            } else {
+                emit_instruction(make_store_instruction(slot), target);
             }
 
             break;
@@ -539,23 +542,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
     }
 }
 
-// TODO don't need extra versions of those!
-Translation_Context@ translate_expressions_into_bytecode(array<Expression@>@ expressions) {
-    return translate_expressions_into_bytecode(null, expressions);
-}
-
-Translation_Context@ translate_expressions_into_bytecode(Function_Definition@ entry_function_definition) {
-    return translate_expressions_into_bytecode(entry_function_definition, entry_function_definition.user_code);
-}
-
-Translation_Context@ translate_expressions_into_bytecode(Function_Definition@ entry_function_definition, array<Expression@>@ expressions) {
-    Translation_Context translation_context;
-
-    Api_Builder@ api_builder = build_api();
-    @translation_context.function_definitions = api_builder.functions;
-
-    Log(info, "Compilation started");
-
+void compile_user_functions(Translation_Context@ translation_context) {
     // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
     // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
     // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
@@ -575,11 +562,10 @@ Translation_Context@ translate_expressions_into_bytecode(Function_Definition@ en
             translation_context.user_function_indices[function.function_name] = const_id;
         }
     }
+}
 
-    // Emit main
-    translation_context.main_function_pointer = emit_user_function(translation_context, entry_function_definition, expressions);
-
-    return translation_context;
+uint compile_single_function_definition(Translation_Context@ translation_context, Function_Definition@ function_definition) {
+    return emit_user_function(translation_context, function_definition, function_definition.user_code);
 }
 
 Instruction@ bool_to_load_const(bool value) {

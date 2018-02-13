@@ -1,11 +1,6 @@
-// UI: Conditions! You can compose conditions and actions into a single tree before passing them into the compiler
-// UI: Event parameters and event variables
-// UI/Compiler/VM: Global variables window
 // UI: User functions!
-// Style: replace most native_ calls and variable names, they are not native anymore mostly!
 // Compiler: Make the compiler multipass, currently can't call routines which were not parsed yet
 // Compiler: Types in general, lol
-// Compiler: Compile into multiple targets with the global compilation context
 // Compiler: Actual function types
 // VM/Compiler: Resize stack dynamically or just figure out maximum stack size and set it to that
 // VM: Exceptions (divide by zero, etc)
@@ -33,7 +28,7 @@ class Expression {
 
     Memory_Cell literal_value;
 
-    // Identifier/Native call/Declaration/Assignment
+    // Identifier/Function call/Declaration/Assignment
     string identifier_name;
 
     // Operator
@@ -293,9 +288,27 @@ array<Expression@>@ make_simple_test_expression_array() {
     return expressions;
 }
 
-void print_bytecode(Thread@ thread) {
-    for (uint x = 0; x < thread.code.length(); x++) {
-        Log(info, x + ": " + instruction_to_string(thread.code[x]));
+void print_compilation_debug_info(Translation_Context@ ctx) {
+    array<string>@ function_names = ctx.user_function_indices.getKeys();
+    for (uint x = 0; x < ctx.code.length(); x++) {
+        string comment = "";
+        for (uint i = 0; i < function_names.length(); i++) {
+            string name = function_names[i];
+            uint location = uint(ctx.constants[uint(ctx.user_function_indices[name])].number_value);
+
+            if (location == x) {
+                comment = colored_keyword(" // function ") + name;
+                break;
+            }
+        }
+
+        for (uint i = 0; i < state.triggers.length(); i++) {
+            if (state.triggers[i].function_entry_pointer == x) {
+                comment = colored_keyword(" // trigger ") + state.triggers[i].name;
+            }
+        }
+
+        Log(info, x + ": " + instruction_to_string(ctx.code[x]) + comment);
     }
 }
 
@@ -305,7 +318,7 @@ void test_simple_code(array<Expression@>@ expressions) {
     Log(info, "----");
 
     auto t = GetPerformanceCounter();
-    Translation_Context@ context = translate_expressions_into_bytecode(expressions);
+    /*Translation_Context@ context = translate_expressions_into_bytecode(expressions);
     set_thread_up_from_translation_context(thread, context);
     Log(info, "Translation :: " + context.expressions_translated + " expressions translated in " + get_time_delta_in_ms(t) + "ms");
 
@@ -315,7 +328,7 @@ void test_simple_code(array<Expression@>@ expressions) {
         Log(info, index + ": " + memory_cell_to_string(thread.constant_pool[index]));
     }
 
-    print_bytecode(thread);
+    print_bytecode(thread);*/
 
     vm.threads.insertLast(thread);
 }
@@ -324,9 +337,51 @@ string memory_cell_to_string(Memory_Cell@ cell) {
     return cell.number_value + "/" + cell.string_value;
 }
 
-void Init(string p_level_name) {
+void initialize_state_and_vm() {
     @vm = make_vm();
     @state = load_trigger_state_from_level_params();
+
+    for (uint variable_index = 0; variable_index < state.global_variables.length(); variable_index++) {
+        vm.memory[variable_index] = state.global_variables[variable_index].value;
+    }
+}
+
+void compile_everything() {
+    auto time = GetPerformanceCounter();
+
+    Variable_Scope global_variables;
+
+    for (uint variable_index = 0; variable_index < state.global_variables.length(); variable_index++) {
+        Variable@ variable = state.global_variables[variable_index];
+        global_variables.local_variable_indices[variable.name] = variable_index;
+    }
+
+    Api_Builder@ api_builder = build_api();
+    
+    Translation_Context translation_context;
+    @translation_context.function_definitions = api_builder.functions;
+
+    compile_user_functions(translation_context);
+
+    for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
+        Trigger@ trigger = state.triggers[trigger_index];
+        Function_Definition@ function_definition = convert_trigger_to_function_definition(trigger);
+
+        trigger.function_entry_pointer = compile_single_function_definition(translation_context, function_definition);
+    }
+
+    vm.code = translation_context.code;
+    @vm.function_executors = translation_context.function_executors;
+    @vm.constant_pool = translation_context.constants;
+
+    Log(info, "load_state_and_compile_code :: " + translation_context.expressions_translated + " expressions translated, took " + get_time_delta_in_ms(time) + "ms");
+
+    print_compilation_debug_info(translation_context);
+}
+
+void Init(string p_level_name) {
+    initialize_state_and_vm();
+    compile_everything();
 }
 
 void ReceiveMessage(string message) {
@@ -361,8 +416,7 @@ void DrawGUI() {
         ImGui_Begin("My_Debug_Win", ImGuiWindowFlags_MenuBar);
 
         if (ImGui_Button("Restart VM and Reload state")) {
-            @vm = make_vm();
-            @state = load_trigger_state_from_level_params();
+            Init("");
         }
 
         if (ImGui_Button("Save trigger state")) {
@@ -395,7 +449,7 @@ void DrawGUI() {
         }
 
         if (ImGui_Button("Compile code")) {
-            translate_expressions_into_bytecode(make_test_expression_array());
+            compile_everything();
         }
 
         if (ImGui_Button("Test string escaping")) {
@@ -447,17 +501,17 @@ void DrawGUI() {
                 if (ImGui_Button("Step forward")) {
                     set_up_instruction_executors_temp();
 
-                    thread_step_forward(thread, Thread_Step_Details());
+                    thread_step_forward(thread);
 
                     clean_up_instruction_executors_temp();
                 }
 
                 ImGui_ListBoxHeader("Code");
 
-                for (uint i = 0; i < thread.code.length(); i++) {
+                for (uint i = 0; i < vm.code.length(); i++) {
                     string clr = i == thread.current_instruction ? "\x1B22FF11FF" : "";
 
-                    ImGui_Text(clr + i + ": " + instruction_to_string(thread.code[i]));
+                    ImGui_Text(clr + i + ": " + instruction_to_string(vm.code[i]));
                 }
 
                 ImGui_ListBoxFooter();
@@ -509,11 +563,13 @@ void Update(int paused) {
 }
 
 void PostScriptReload() {
-    @state = load_trigger_state_from_level_params();
+    initialize_state_and_vm();
+    compile_everything();
 }
 
 void PreScriptReload() {
     @state = null;
+    @vm = null;
 }
 
 void SetWindowDimensions(int w, int h) {

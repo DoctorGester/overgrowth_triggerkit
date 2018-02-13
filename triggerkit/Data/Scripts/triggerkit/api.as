@@ -158,6 +158,8 @@ Function_Definition@ convert_trigger_to_function_definition(Trigger@ trigger) {
 
     Expression@ condition_wrapper = make_if(assembled_condition, trigger.actions);
 
+    @result.user_code = array<Expression@> = { make_if(assembled_condition, trigger.actions) };
+
     return result;
 }
 
@@ -212,15 +214,8 @@ void try_run_triggers_for_event_type(Event_Type event_type, array<Memory_Cell@>@
 Thread@ run_trigger(Trigger@ trigger, array<Memory_Cell@>@ parameters) {
     Log(info, "Running trigger \"" + trigger.name + "\"");
 
-    auto time = GetPerformanceCounter();
-
-    Function_Definition@ trigger_function = convert_trigger_to_function_definition(trigger);
-    Translation_Context@ context = translate_expressions_into_bytecode(trigger_function);
-
-    Log(info, "Translation :: " + context.expressions_translated + " expressions translated, took " + get_time_delta_in_ms(time) + "ms");
-
     Thread@ thread = make_thread(vm);
-    set_thread_up_from_translation_context(thread, context);
+    thread.current_instruction = trigger.function_entry_pointer;
 
     for (uint parameter_index = 0; parameter_index < parameters.length(); parameter_index++) {
         uint slot = parameters.length() - parameter_index - 1;

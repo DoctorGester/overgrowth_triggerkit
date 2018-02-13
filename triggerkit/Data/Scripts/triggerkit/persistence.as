@@ -141,18 +141,6 @@ Trigger_Kit_State@ load_trigger_state_from_level_params() {
     return state;
 }
 
-/*array<Trigger@> load_triggers_from_level_params() {
-    ScriptParams@ params = level.GetScriptParams();
-
-    if (params.HasParam(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME)) {
-        string text = params.GetString(LEVEL_PARAM_WITH_TRIGGER_CONTENT_NAME);
-
-        return parse_triggers_from_string(text);
-    }
-
-    return array<Trigger@>();
-}*/
-
 string operator_type_to_serializeable_string(Operator_Type operator_type) {
     switch (operator_type) {
         case OPERATOR_AND: return "and";
