@@ -63,14 +63,16 @@ void pop_ui_variable_scope(Ui_Frame_State@ frame) {
     @frame.top_scope = frame.top_scope.parent_scope;
 }
 
-void collect_scope_variables(Ui_Variable_Scope@ from_scope, array<Variable@>@ target) {
+void collect_scope_variables(Ui_Variable_Scope@ from_scope, array<Variable@>@ target, Literal_Type limit_to) {
     // TODO Variable shadowing duplicates variables!
     for (uint variable_index = 0; variable_index < from_scope.variables.length(); variable_index++) {
-        target.insertLast(from_scope.variables[variable_index]);
+        if (limit_to == LITERAL_TYPE_VOID || limit_to == from_scope.variables[variable_index].type) {
+            target.insertLast(from_scope.variables[variable_index]);
+        }
     }
 
     if (from_scope.parent_scope !is null) {
-        collect_scope_variables(from_scope.parent_scope, target);
+        collect_scope_variables(from_scope.parent_scope, target, limit_to);
     }
 }
 
@@ -207,8 +209,8 @@ void draw_expressions_in_a_tree_node(string title, array<Expression@>@ expressio
     }
 }
 
-void draw_expression_and_continue_on_the_same_line(Expression@ expression, Ui_Frame_State@ frame) {
-    draw_editable_expression(expression, frame);
+void draw_expression_and_continue_on_the_same_line(Expression@ expression, Ui_Frame_State@ frame, Literal_Type limit_to = LITERAL_TYPE_VOID) {
+    draw_editable_expression(expression, frame, limit_to: limit_to);
     ImGui_SameLine();
 }
 
@@ -235,12 +237,20 @@ void draw_editor_popup_footer(Ui_Frame_State@ frame) {
     }
 }
 
-void draw_editor_popup_function_selector(Expression@ expression) {
+void draw_editor_popup_function_selector(Expression@ expression, Literal_Type limit_to = LITERAL_TYPE_VOID) {
+    array<Function_Definition@>@ source_functions;
+
+    if (limit_to != LITERAL_TYPE_VOID) {
+        @source_functions = filter_function_definitions_by_return_type(limit_to);
+    } else {
+        @source_functions = state.function_definitions;
+    }
+
     int selected_function = 0;
     array<string> function_names;
 
-    for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
-        Function_Definition@ function_definition = state.function_definitions[function_index];
+    for (uint function_index = 0; function_index < source_functions.length(); function_index++) {
+        Function_Definition@ function_definition = source_functions[function_index];
 
         string name = get_function_name_for_list(function_definition);
 
@@ -252,13 +262,15 @@ void draw_editor_popup_function_selector(Expression@ expression) {
     }
 
     if (ImGui_Combo("##function_selector", selected_function, function_names)) {
-        Function_Definition@ selected_definition = state.function_definitions[selected_function];
+        Function_Definition@ selected_definition = source_functions[selected_function];
+
+        expression.type = EXPRESSION_CALL;
 
         fill_function_call_expression_from_function_definition(expression, selected_definition);
     }
 }
 
-void draw_statement_editor_popup(Ui_Frame_State@ frame) {
+void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
     Expression@ expression = state.edited_expressions[frame.popup_stack_level - 1];
 
     ImGui_Text("Action type");
@@ -336,11 +348,11 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame) {
     draw_editor_popup_footer(frame);
 }
 
-bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression) {
+bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Literal_Type limit_to = LITERAL_TYPE_VOID) {
     array<Variable@> scope_variables;
 
     // TODO incorrect, doesn't consider variable declaration locations, bad!
-    collect_scope_variables(frame.top_scope, scope_variables);
+    collect_scope_variables(frame.top_scope, scope_variables, limit_to);
 
     array<string> variable_names;
     int selected_variable = -1;
@@ -364,7 +376,7 @@ bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression) {
     return changed;
 }
 
-void draw_expression_editor_popup(Ui_Frame_State@ frame) {
+void draw_expression_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
     Expression@ expression = state.edited_expressions[frame.popup_stack_level - 1];
 
     const int offset = 200;
@@ -376,7 +388,7 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame) {
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
     
-    if (draw_variable_selector(frame, expression)) {
+    if (draw_variable_selector(frame, expression, limit_to)) {
         expression.type = EXPRESSION_IDENTIFIER;
     }
 
@@ -389,7 +401,7 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame) {
 
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
-    draw_editor_popup_function_selector(expression);
+    draw_editor_popup_function_selector(expression, limit_to: limit_to);
 
     if (is_a_function_call || is_an_operator) {
         ImGui_SetCursorPosX(offset);
@@ -408,10 +420,9 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame) {
     draw_editor_popup_footer(frame);
 }
 
-void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, bool parent_is_a_code_block = false) {
+void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, bool parent_is_a_code_block = false, Literal_Type limit_to = LITERAL_TYPE_VOID) {
     if (ImGui_Button(expression_to_string(expression) + frame.unique_id("editable_button"))) {
-        ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level);
-        state.edited_expressions.insertLast(expression);
+        open_expression_editor_popup(expression, frame);
     }
 
     bool is_open = true;
@@ -421,9 +432,9 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
         frame.popup_stack_level++;
 
         if (parent_is_a_code_block) {
-            draw_statement_editor_popup(frame);
+            draw_statement_editor_popup(frame, limit_to);
         } else {
-            draw_expression_editor_popup(frame);
+            draw_expression_editor_popup(frame, limit_to);
         }
 
         ImGui_EndPopup();
@@ -520,7 +531,8 @@ void draw_function_call_as_broken_into_pieces_simple(Expression@ expression, Ui_
     pre_expression_text("(");
 
     for (uint argument_index = 0; argument_index < expression.arguments.length(); argument_index++) {
-        draw_expression_and_continue_on_the_same_line(expression.arguments[argument_index], frame);
+        Expression@ argument = expression.arguments[argument_index];
+        draw_expression_and_continue_on_the_same_line(argument, frame, limit_to: argument.literal_type);
     }
 
     post_expression_text(")");
@@ -544,7 +556,8 @@ void draw_function_call_as_broken_into_pieces(Expression@ expression, Ui_Frame_S
             ImGui_SameLine();
         }
 
-        string argument_as_string = literal_type_to_ui_string(function_definition.argument_types[argument_index]);
+        Literal_Type argument_type = function_definition.argument_types[argument_index];
+        string argument_as_string = literal_type_to_ui_string(argument_type);
         bool argument_found = false;
 
         if (expression.arguments.length() > argument_index) {
@@ -552,7 +565,7 @@ void draw_function_call_as_broken_into_pieces(Expression@ expression, Ui_Frame_S
             argument_found = argument_expression !is null;
 
             if (argument_found) {
-                draw_expression_and_continue_on_the_same_line(argument_expression, frame);
+                draw_expression_and_continue_on_the_same_line(argument_expression, frame, limit_to: argument_type);
             }
         }
 
@@ -589,14 +602,14 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
 
         case EXPRESSION_IF: {
             pre_expression_text("If");
-            draw_editable_expression(expression.value_expression, frame);
+            draw_editable_expression(expression.value_expression, frame, limit_to: LITERAL_TYPE_BOOL);
 
             break;
         }
 
         case EXPRESSION_REPEAT: {
             pre_expression_text("Repeat");
-            draw_editable_expression(expression.value_expression, frame);
+            draw_editable_expression(expression.value_expression, frame, limit_to: LITERAL_TYPE_NUMBER);
             post_expression_text("times");
             break;
         }
@@ -606,7 +619,7 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
             draw_type_selector(expression.literal_type, "", Literal_Type(0));
             draw_button_and_continue_on_the_same_line(expression.identifier_name + frame.unique_id("declare"));
             pre_expression_text("=");
-            draw_editable_expression(expression.value_expression, frame);
+            draw_editable_expression(expression.value_expression, frame, limit_to: expression.literal_type);
             break;
         }
 
@@ -615,7 +628,8 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
             draw_variable_selector(frame, expression);
             ImGui_SameLine();
             pre_expression_text("=");
-            draw_editable_expression(expression.value_expression, frame);
+            // TODO we need to search for a variable and then figure out its type
+            draw_editable_expression(expression.value_expression, frame); 
             break;
         }
 
@@ -634,8 +648,11 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
 
 void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame) {
     if (expressions.length() == 0) {
-        if (ImGui_Button("+##bluz")) {
-            expressions.insertLast(make_function_call("do_nothing"));
+        if (ImGui_Button("+" + frame.unique_id("add"))) {
+            Expression@ new_expression = make_function_call("do_nothing");
+            expressions.insertLast(new_expression);
+
+            open_expression_editor_popup(new_expression, frame);
             return;
         }
     }
@@ -653,33 +670,37 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame) {
             frame.top_scope.variables.insertLast(variable);
         }
 
-        vec2 cursor_start_pos = ImGui_GetCursorScreenPos() ;
+        bool is_in_editor_popup = state.edited_expressions.length() > 0;
+
+        vec2 cursor_start_pos = ImGui_GetCursorScreenPos();
 
         draw_expression_image(expression);
         draw_editable_expression(expression, frame, true);
 
-        vec2 hover_min = cursor_start_pos;
-        vec2 hover_max = cursor_start_pos + vec2(900, 18);
+        if (!is_in_editor_popup) {
+            vec2 hover_min = cursor_start_pos;
+            vec2 hover_max = cursor_start_pos + vec2(900, 18);
 
-        if (ImGui_IsMouseHoveringRect(hover_min, hover_max)) {
-            float x_position_snapped = int((ImGui_GetMousePos().x - ImGui_GetWindowPos().x) / 64) * 64;
+            if (ImGui_IsMouseHoveringRect(hover_min, hover_max)) {
+                float x_position_snapped = int((ImGui_GetMousePos().x - ImGui_GetWindowPos().x) / 64) * 64;
 
-            ImGui_SameLine();
-            // ImGui_SetCursorPosX(x_position_snapped);
-            
-            if (ImGui_Button("+")) {
-                Expression@ new_expression = make_function_call("do_nothing");
-                expressions.insertAt(uint(index) + 1, new_expression);
-                ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level);
-                state.edited_expressions.insertLast(new_expression);
-            }
+                ImGui_SameLine();
+                // ImGui_SetCursorPosX(x_position_snapped);
+                
+                if (ImGui_Button("+")) {
+                    Expression@ new_expression = make_function_call("do_nothing");
+                    expressions.insertAt(uint(index) + 1, new_expression);
 
-            ImGui_SameLine();
+                    open_expression_editor_popup(new_expression, frame);
+                }
 
-            if (ImGui_Button("X")) {
-                expressions.removeAt(index);
+                ImGui_SameLine();
 
-                index--;
+                if (ImGui_Button("X")) {
+                    expressions.removeAt(index);
+
+                    index--;
+                }
             }
         }
 

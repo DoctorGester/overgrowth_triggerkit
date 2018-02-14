@@ -239,6 +239,11 @@ Api_Builder@ build_api() {
         .fmt("A character enters a region");
 
     builder
+        .func("do_nothing", api::do_nothing)
+        .list_name("Do nothing")
+        .fmt("Do nothing");
+
+    builder
         .func("log1", api::log1)
         .list_name("Test function 1")
         .fmt("Log 1");
@@ -382,6 +387,9 @@ namespace environment {
 }
 
 namespace api {
+    void do_nothing(Native_Call_Context@ ctx){
+    }
+
     void nlt(Native_Call_Context@ ctx) {
         float left = ctx.take_number();
         float right = ctx.take_number();

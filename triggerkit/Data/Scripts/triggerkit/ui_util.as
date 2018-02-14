@@ -382,3 +382,22 @@ array<Function_Definition@> filter_function_definitions_by_predicate(Function_Pr
 
     return filter_result;
 }
+
+array<Function_Definition@> filter_function_definitions_by_return_type(Literal_Type limit_to) {
+    array<Function_Definition@> filter_result;
+
+    for (uint index = 0; index < state.function_definitions.length(); index++) {
+        Function_Definition@ function_definition = state.function_definitions[index];
+
+        if (function_definition.return_type == limit_to) {
+            filter_result.insertLast(function_definition);
+        }
+    }
+
+    return filter_result;
+}
+
+void open_expression_editor_popup(Expression@ expression, Ui_Frame_State@ frame) {
+    ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level);
+    state.edited_expressions.insertLast(expression);
+}
