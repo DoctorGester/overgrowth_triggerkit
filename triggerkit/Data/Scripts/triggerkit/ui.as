@@ -36,6 +36,7 @@ class Variable {
 class Ui_Frame_State {
     uint expression_index;
     uint popup_stack_level;
+    uint line_counter;
 
     Ui_Variable_Scope@ top_scope;
 
@@ -214,13 +215,6 @@ void draw_expression_and_continue_on_the_same_line(Expression@ expression, Ui_Fr
     ImGui_SameLine();
 }
 
-bool draw_button_and_continue_on_the_same_line(string text) {
-    bool result = ImGui_Button(text);
-    ImGui_SameLine();
-
-    return result;
-}
-
 void pop_edited_expression(Ui_Frame_State@ frame) {
     state.edited_expressions.removeLast();
     frame.popup_stack_level--;
@@ -324,6 +318,8 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
         switch (selected_action) {
             case 0: {
                 expression.type = EXPRESSION_DECLARATION;
+                expression.literal_type = LITERAL_TYPE_NUMBER;
+                @expression.value_expression = make_lit(0);
                 break;
             }
 
@@ -362,7 +358,6 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
 bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Variable@& result_variable, Literal_Type limit_to = LITERAL_TYPE_VOID) {
     array<Variable@> scope_variables;
 
-    // TODO incorrect, doesn't consider variable declaration locations, bad!
     collect_scope_variables(frame.top_scope, scope_variables, limit_to);
 
     array<string> variable_names;
@@ -445,7 +440,7 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
     bool is_open = true;
 
     ImGui_SetNextWindowPos(ImGui_GetWindowPos() + vec2(20, 20), ImGuiSetCond_Appearing);
-    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
         frame.popup_stack_level++;
 
         if (parent_is_a_code_block) {
@@ -510,18 +505,14 @@ void draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
     }
 }
 
-void draw_type_selector(Literal_Type& input_type, string text_label, Literal_Type limit_to) {
+bool draw_type_selector(Literal_Type& input_type, string text_label) {
     array<Literal_Type> all_types;
 
-    if (limit_to != 0) {
-        all_types.resize(0);
-        all_types.insertLast(limit_to);
-    } else {
-        all_types.reserve(LITERAL_TYPE_LAST - 1);
+    all_types.reserve(LITERAL_TYPE_LAST - 1);
 
-        for (Literal_Type type = Literal_Type(0); type < LITERAL_TYPE_LAST; type++) {
-            all_types.insertLast(type);
-        }
+    // Skip VOID type
+    for (Literal_Type type = Literal_Type(1); type < LITERAL_TYPE_LAST; type++) {
+        all_types.insertLast(type);
     }
 
     array<string> type_names;
@@ -535,15 +526,20 @@ void draw_type_selector(Literal_Type& input_type, string text_label, Literal_Typ
         type_names.insertLast(colored_literal_type(all_types[index]));
     }
 
-    if (ImGui_Combo(text_label, selected, type_names)) {
+    bool changed = ImGui_Combo(text_label, selected, type_names);
+
+    if (changed) {
         input_type = all_types[selected];
     }
 
     ImGui_SameLine();
+
+    return changed;
 }
 
 void draw_function_call_as_broken_into_pieces_simple(Expression@ expression, Ui_Frame_State@ frame) {
-    draw_button_and_continue_on_the_same_line(expression.identifier_name + frame.unique_id("function_name"));
+    ImGui_Button(expression.identifier_name + frame.unique_id("function_name"));
+    ImGui_SameLine();
 
     pre_expression_text("(");
 
@@ -633,8 +629,19 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
 
         case EXPRESSION_DECLARATION: {
             pre_expression_text(colored_keyword("Declare"));
-            draw_type_selector(expression.literal_type, "", Literal_Type(0));
-            draw_button_and_continue_on_the_same_line(expression.identifier_name + frame.unique_id("declare"));
+            
+            if (draw_type_selector(expression.literal_type, "")) {
+                expression.value_expression = make_empty_lit(expression.literal_type);
+            }
+
+            ImGui_SetTextBuf(expression.identifier_name);
+            
+            if (ImGui_InputText(frame.unique_id("declare"))) {
+                expression.identifier_name = ImGui_GetTextBuf();
+            }
+
+            ImGui_SameLine();
+
             pre_expression_text("=");
             draw_editable_expression(expression.value_expression, frame, limit_to: expression.literal_type);
             break;
@@ -686,6 +693,13 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Li
     for (int index = 0; uint(index) < expressions.length(); index++) {
         Expression@ expression = expressions[uint(index)];
 
+        bool is_in_editor_popup = state.edited_expressions.length() > 0;
+
+        vec2 cursor_start_pos = ImGui_GetCursorScreenPos();
+
+        draw_expression_image(expression);
+        draw_editable_expression(expression, frame, true, limit_to: limit_to);
+
         if (expression.type == EXPRESSION_DECLARATION) {
             Variable variable;
             variable.name = expression.identifier_name;
@@ -693,13 +707,6 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Li
 
             frame.top_scope.variables.insertLast(variable);
         }
-
-        bool is_in_editor_popup = state.edited_expressions.length() > 0;
-
-        vec2 cursor_start_pos = ImGui_GetCursorScreenPos();
-
-        draw_expression_image(expression);
-        draw_editable_expression(expression, frame, true, limit_to: limit_to);
 
         if (!is_in_editor_popup) {
             vec2 hover_min = cursor_start_pos;
@@ -741,6 +748,8 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Li
                 break;
             }
         }
+
+        frame.line_counter++;
     }
 
     pop_ui_variable_scope(frame);
@@ -832,7 +841,7 @@ void draw_globals_modal() {
         {
             ImGui_PushItemWidth(int(free_width * 0.2));
             
-            draw_type_selector(variable.type, "###type_selector" + variable_index, Literal_Type(0));
+            draw_type_selector(variable.type, "###type_selector" + variable_index);
 
             ImGui_PopItemWidth();
             ImGui_SameLine();

@@ -9,8 +9,14 @@
 // Figure out what to do with stuff like string operators etc, we could totally make everything a function but then we lose an ability to easily analyze it
 // Fix variable scoping in the UI, you can access already defined variables
 // Fix some todos
+// Cameras for dialogues:
+//      Vector type
+//      Camera type: camera model and a camera panel which allows setting current view to camera and camera to view
+//      Parallel execution, Parallel operation type
+//          Break expression, fix the return expression, user functions UI
 // Figure out another demo with proper dialogues
 // Make even more demos, abandon this one!
+// Varargs for string concatenation? We could combine them into an array and pass that easily
 
 // UI: User functions!
 // Compiler: Make the compiler multipass, currently can't call routines which were not parsed yet
@@ -21,6 +27,16 @@
 // VM: Array types
 // VM/Compiler: _RESERVE seems like a useless instruction? What are we doing wrong here exactly? There has to be
 //              a way to move the stack pointer without it
+// Very far fetch: "Run in parallel block", would require lambda functions?
+//                  Maybe we can just somehow hack it together and only run user functions like that? 
+//                  Like a user-function call flag which just spawns a new thread with a native_call
+//                       and copies num_args from top of the stack into it?
+//                  On a side note a block would literally be compiled as a separate function with all
+//                      used previous scope local variables copied in a similar manner to function calls,
+//                      in the end isn't that what lambda functions are? It wouldn't even enable first class
+//                      function support or a funarg problem because we wouldn't be able to pass the function around
+//                      and there wouldn't be a function type or any associated type-checking. Smooth.
+//                  An interesting thing there: we could have a thread.join function which would wait until a thread ends
 
 
 #include "triggerkit/ui.as"
@@ -250,67 +266,6 @@ array<Expression@>@ make_test_expression_array() {
     return expressions;
 }
 
-Expression@ make_say_expr(string who, string what) {
-    Expression@ expr = make_function_call("dialogue_say");
-    expr.arguments.insertLast(make_lit(who));
-    expr.arguments.insertLast(make_lit(what));
-
-    return expr;
-}
-
-array<Expression@>@ make_test_dialogue_expression_array() {
-    /*Expression@ calc = make_function_call("sub_test");
-    calc.arguments.insertLast(make_lit(6.0f));
-    calc.arguments.insertLast(make_lit(3.0f));
-
-    Expression@ wait_for = make_function_call("wait");
-    wait_for.arguments.insertLast(calc);*/
-
-    Expression@ print_name = make_function_call("print_str");
-    print_name.arguments.insertLast(make_ident("Entering Character"));
-
-    array<Expression@>@ expressions = {
-        /*make_function_call("log1"),
-        wait_for,
-        make_function_call("log2"),
-        calc*/
-        make_function_call("start_dialogue"),
-        make_say_expr("Bongus", "Mega hail to you my fiend friend"),
-        make_function_call("wait_until_dialogue_line_is_complete"),
-        make_say_expr("Dingo", "Hi to u as well noob"),
-        make_function_call("wait_until_dialogue_line_is_complete"),
-        make_function_call("end_dialogue"),
-        print_name
-    };
-
-    return expressions;
-}
-
-array<Expression@>@ make_simple_test_expression_array() {
-    Expression@ condition = Expression();
-    condition.type = EXPRESSION_IF;
-    @condition.value_expression = make_op_expr(OPERATOR_LT, make_lit(3), make_lit(5));
-    condition.block_body = array<Expression@> = {
-    };
-
-    condition.else_block_body = array<Expression@> = {
-        //wait
-    };
-
-    Expression@ repeat = Expression();
-    repeat.type = EXPRESSION_REPEAT;
-    @repeat.value_expression = make_lit(10);
-    //repeat.block_body.insertLast(sub);
-    repeat.block_body = array<Expression@> = {
-    };
-
-
-    array<Expression@>@ expressions = {
-    };
-
-    return expressions;
-}
-
 void print_compilation_debug_info(Translation_Context@ ctx) {
     array<string>@ function_names = ctx.user_function_indices.getKeys();
     for (uint x = 0; x < ctx.code.length(); x++) {
@@ -455,18 +410,10 @@ void DrawGUI() {
             test_simple_code(make_test_expression_array());
         }
 
-        if (ImGui_Button("Run test dialogue code")) {
-            test_simple_code(make_test_dialogue_expression_array());
-        }
-
         if (ImGui_Button("Populate first trigger with test code")) {
             state.triggers[0].actions = make_test_expression_array();
         }
 
-        if (ImGui_Button("Populate second trigger with dialogue code")) {
-            state.triggers[1].actions = make_test_dialogue_expression_array();
-        }
-        
         if (ImGui_Button("Save and load code")) {
             save_trigger_state_into_level_params(state);
             load_trigger_state_from_level_params();
@@ -584,6 +531,18 @@ void Update(int paused) {
             }
         }
     }
+
+    if (environment::is_in_dialogue_mode) {
+        vec3 cam_rot(-40.0f, 0.0f, 0.0f);
+        vec3 cam_pos(10.0f);
+        float cam_zoom = 90.0f;
+        camera.SetXRotation(cam_rot.x);
+        camera.SetYRotation(cam_rot.y);
+        camera.SetZRotation(cam_rot.z);
+        camera.SetPos(cam_pos);
+        camera.SetDistance(0.0f);
+        camera.SetFOV(cam_zoom);
+    }
 }
 
 void PostScriptReload() {
@@ -597,4 +556,12 @@ void PreScriptReload() {
 }
 
 void SetWindowDimensions(int w, int h) {
+}
+
+int HasCameraControl() {
+    return environment::is_in_dialogue_mode ? 1 : 0;
+}
+
+bool DialogueCameraControl() {
+    return environment::is_in_dialogue_mode;
 }

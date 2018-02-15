@@ -384,6 +384,6 @@ array<Function_Definition@> filter_function_definitions_by_return_type(Literal_T
 }
 
 void open_expression_editor_popup(Expression@ expression, Ui_Frame_State@ frame) {
-    ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level);
+    ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level + frame.line_counter);
     state.edited_expressions.insertLast(expression);
 }
