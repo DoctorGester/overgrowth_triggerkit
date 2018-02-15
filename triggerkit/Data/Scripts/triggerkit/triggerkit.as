@@ -1,3 +1,17 @@
+// More dialogue functions
+// Operator support in UI
+// Exclude certain functions (like boolean comparisons) from the list of available actions
+// Undo/Redo/Cancel. The way to do it: just keep a buffer of serialized code versions and have a push_trigger_state function called at certain times
+// Serialization format versioning
+// Proper error reporting: compiler goes through the whole thing and gives a list of Compiler_Error which have direct links to Expression@ instances, 
+//                         highlight them and exclude related triggers from compilation
+// Properly resize globals window when opened and resize global list to the size of the window
+// Figure out what to do with stuff like string operators etc, we could totally make everything a function but then we lose an ability to easily analyze it
+// Fix variable scoping in the UI, you can access already defined variables
+// Fix some todos
+// Figure out another demo with proper dialogues
+// Make even more demos, abandon this one!
+
 // UI: User functions!
 // Compiler: Make the compiler multipass, currently can't call routines which were not parsed yet
 // Compiler: Types in general, lol

@@ -202,9 +202,9 @@ void post_expression_text(string text) {
     ImGui_Text(text);
 }
 
-void draw_expressions_in_a_tree_node(string title, array<Expression@>@ expressions, Ui_Frame_State@ frame) {
+void draw_expressions_in_a_tree_node(string title, array<Expression@>@ expressions, Ui_Frame_State@ frame, Literal_Type limit_to = LITERAL_TYPE_VOID) {
     if (ImGui_TreeNodeEx(title + frame.unique_id("expression_block"), ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
-        draw_expressions(expressions, frame);
+        draw_expressions(expressions, frame, limit_to: limit_to);
         ImGui_TreePop();
     }
 }
@@ -275,30 +275,41 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
 
     ImGui_Text("Action type");
 
-    array<string> action_names = { "Declare Variable", "Assign Variable", "If/Then/Else" };
-
-    uint functions_offset = action_names.length();
     int selected_action = -1;
 
-    switch (expression.type) {
-        case EXPRESSION_DECLARATION: {
-            selected_action = 0;
-            break;
-        }
+    array<string> action_names;
+    array<Function_Definition@>@ source_functions;
 
-        case EXPRESSION_ASSIGNMENT: {
-            selected_action = 1;
-            break;
-        }
+    if (limit_to != LITERAL_TYPE_VOID) {
+        @source_functions = filter_function_definitions_by_return_type(limit_to);
+    } else {
+        @source_functions = state.function_definitions;
 
-        case EXPRESSION_IF: {
-            selected_action = 2;
-            break;
+        action_names = array<string> = { "Declare Variable", "Assign Variable", "If/Then/Else" };
+
+        // TODO This is dirty, we could have an array of little structures defined somewhere which have a name/expr_type
+        switch (expression.type) {
+            case EXPRESSION_DECLARATION: {
+                selected_action = 0;
+                break;
+            }
+
+            case EXPRESSION_ASSIGNMENT: {
+                selected_action = 1;
+                break;
+            }
+
+            case EXPRESSION_IF: {
+                selected_action = 2;
+                break;
+            }
         }
     }
 
-    for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
-        Function_Definition@ function_definition = state.function_definitions[function_index];
+    uint functions_offset = action_names.length();
+
+    for (uint function_index = 0; function_index < source_functions.length(); function_index++) {
+        Function_Definition@ function_definition = source_functions[function_index];
 
         string name = get_function_name_for_list(function_definition);
 
@@ -331,7 +342,7 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
             default: {
                 expression.type = EXPRESSION_CALL;
 
-                Function_Definition@ selected_definition = state.function_definitions[selected_action - functions_offset];
+                Function_Definition@ selected_definition = source_functions[selected_action - functions_offset];
 
                 fill_function_call_expression_from_function_definition(expression, selected_definition);
             }
@@ -348,7 +359,7 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
     draw_editor_popup_footer(frame);
 }
 
-bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Literal_Type limit_to = LITERAL_TYPE_VOID) {
+bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Variable@& result_variable, Literal_Type limit_to = LITERAL_TYPE_VOID) {
     array<Variable@> scope_variables;
 
     // TODO incorrect, doesn't consider variable declaration locations, bad!
@@ -364,6 +375,8 @@ bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Liter
 
         if (variable_name == expression.identifier_name) {
             selected_variable = variable_index;
+
+            @result_variable = scope_variables[variable_index];
         }
     }
 
@@ -371,6 +384,8 @@ bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Liter
 
     if (changed) {
         expression.identifier_name = variable_names[selected_variable];
+
+        @result_variable = scope_variables[selected_variable];
     }
 
     return changed;
@@ -387,8 +402,10 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) 
 
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
+
+    Variable@ selected_variable = null;
     
-    if (draw_variable_selector(frame, expression, limit_to)) {
+    if (draw_variable_selector(frame, expression, selected_variable, limit_to)) {
         expression.type = EXPRESSION_IDENTIFIER;
     }
 
@@ -625,11 +642,18 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
 
         case EXPRESSION_ASSIGNMENT: {
             pre_expression_text("set");
-            draw_variable_selector(frame, expression);
+            
+            Variable@ selected_variable = null;
+
+            if (draw_variable_selector(frame, expression, selected_variable)) {
+                @expression.value_expression = make_empty_lit(selected_variable.type);
+            }
+
             ImGui_SameLine();
             pre_expression_text("=");
-            // TODO we need to search for a variable and then figure out its type
-            draw_editable_expression(expression.value_expression, frame); 
+
+            Literal_Type limit_assignment_to = selected_variable !is null ? selected_variable.type : LITERAL_TYPE_VOID;
+            draw_editable_expression(expression.value_expression, frame, limit_to: limit_assignment_to); 
             break;
         }
 
@@ -646,7 +670,7 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
     }
 }
 
-void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame) {
+void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Literal_Type limit_to = LITERAL_TYPE_VOID) {
     if (expressions.length() == 0) {
         if (ImGui_Button("+" + frame.unique_id("add"))) {
             Expression@ new_expression = make_function_call("do_nothing");
@@ -675,7 +699,7 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame) {
         vec2 cursor_start_pos = ImGui_GetCursorScreenPos();
 
         draw_expression_image(expression);
-        draw_editable_expression(expression, frame, true);
+        draw_editable_expression(expression, frame, true, limit_to: limit_to);
 
         if (!is_in_editor_popup) {
             vec2 hover_min = cursor_start_pos;
@@ -769,7 +793,7 @@ void draw_trigger_content(Trigger@ current_trigger) {
         frame.top_scope.variables.insertLast(variable);
     }
 
-    draw_expressions_in_a_tree_node("Conditions", current_trigger.conditions, frame);
+    draw_expressions_in_a_tree_node("Conditions", current_trigger.conditions, frame, limit_to: LITERAL_TYPE_BOOL);
     draw_expressions_in_a_tree_node("Actions", current_trigger.actions, frame);
 
     pop_ui_variable_scope(frame);
