@@ -224,23 +224,9 @@ string expression_to_string(Expression@ expression) {
     return "not_implemented (" + expression.type + ")";
 }
 
-// Big SHack!
-float get_text_width(string text) {
-    vec2 cursor_position = ImGui_GetCursorPos();
-
-    ImGui_TextColored(vec4(), text);
-    ImGui_SameLine();
-
-    float new_x = ImGui_GetCursorPosX();
-
-    ImGui_SetCursorPos(cursor_position);
-
-    return new_x - cursor_position.x;
-}
-
 bool icon_button(string text, string id, TextureAssetRef icon) {
     const float size_y = 28.0f;
-    float text_width = get_text_width(text);
+    float text_width = ImGui_CalcTextSize(text, hide_text_after_double_hash: true).x;
 
     vec2 cursor_position = ImGui_GetCursorPos();
     vec2 image_size(16, 16);
