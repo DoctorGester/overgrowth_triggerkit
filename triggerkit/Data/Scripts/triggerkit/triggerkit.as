@@ -7,6 +7,8 @@
 //  Operators in the statement popup when editing conditions, again think about code generalization with the expression editor
 //      maybe we even should use an expression editor here? Then you would be able to select a literal value,
 //      but we could also just remove the literal value part when calling from a block and leave the variable/operators
+//  Work on parenthesis elimination. Long chains of additions shouldn't have parenthesis at all.
+//      This is easy to handle, not sure if we can devise a more general solution though.
 
 // More dialogue functions
 // Operator support in UI

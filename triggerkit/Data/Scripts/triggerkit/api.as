@@ -96,7 +96,9 @@ class Operator_Definition {
     Operator_Group@ parent_group;
 
     Operator_Type operator_type;
-    Native_Function_Executor@ as_native_executor;
+    Native_Function_Executor@ native_executor;
+    Instruction_Type instruction_type;
+    bool represented_as_a_native_executor;
 }
 
 class Operator_Group {
@@ -120,6 +122,25 @@ class Operator_Group {
     Operator_Group@ with_operands(Literal_Type left, Literal_Type right) {
         current_instance.left_operand_type = left;
         current_instance.right_operand_type = right;
+
+        return this;
+    }
+
+    Operator_Group@ with_both_operands_as(Literal_Type type) {
+        return with_operands(type, type);
+    }
+
+
+    Operator_Group@ as_native_executor(Native_Function_Executor@ native_executor) {
+        @current_instance.native_executor = native_executor;
+        current_instance.represented_as_a_native_executor = true;
+
+        return this;
+    }
+
+    Operator_Group@ as_singular_instruction(Instruction_Type instruction_type) {
+        current_instance.instruction_type = instruction_type;
+        current_instance.represented_as_a_native_executor = false;
 
         return this;
     }
@@ -289,77 +310,91 @@ Api_Builder@ build_api() {
         .defines("Region being entered", LITERAL_TYPE_STRING)
         .fmt("A character enters a region");
 
-    // TODO the pairs are always the same, maybe we should shorten all that?
     api
         .operator_group("Arithmetics", LITERAL_TYPE_NUMBER)
             .operator("+", OPERATOR_ADD)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            .as_singular_instruction(INSTRUCTION_TYPE_ADD)
 
             .operator("-", OPERATOR_SUB)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            .as_singular_instruction(INSTRUCTION_TYPE_SUB)
 
             .operator("*", OPERATOR_MUL)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            .as_singular_instruction(INSTRUCTION_TYPE_MUL)
 
             .operator("/", OPERATOR_DIV)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            .as_singular_instruction(INSTRUCTION_TYPE_DIV)
     ;
     
     api
         .operator_group("Boolean comparison", LITERAL_TYPE_BOOL)
             .operator("is", OPERATOR_EQ)
-            .with_operands(LITERAL_TYPE_BOOL, LITERAL_TYPE_BOOL)
+            .with_both_operands_as(LITERAL_TYPE_BOOL)
+            .as_singular_instruction(INSTRUCTION_TYPE_EQ)
 
             .operator("is not", OPERATOR_NEQ)
-            .with_operands(LITERAL_TYPE_BOOL, LITERAL_TYPE_BOOL)
+            .with_both_operands_as(LITERAL_TYPE_BOOL)
+            .as_singular_instruction(INSTRUCTION_TYPE_NEQ)
     ;
 
     api
         .operator_group("Number comparison", LITERAL_TYPE_BOOL)
             .operator("is", OPERATOR_EQ)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            .as_singular_instruction(INSTRUCTION_TYPE_EQ)
 
             .operator("is not", OPERATOR_NEQ)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            .as_singular_instruction(INSTRUCTION_TYPE_NEQ)
 
             .operator("is more than", OPERATOR_GT)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            .as_singular_instruction(INSTRUCTION_TYPE_GT)
 
             .operator("is less than", OPERATOR_LT)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            .as_singular_instruction(INSTRUCTION_TYPE_LT)
 
             .operator("is more or equals to", OPERATOR_GE)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            // TODO instruction type
 
             .operator("is less or equals to", OPERATOR_LE)
-            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+            .with_both_operands_as(LITERAL_TYPE_NUMBER)
+            // TODO instruction type
     ;
 
     api
         .operator_group("String comparison", LITERAL_TYPE_BOOL)
             .operator("is", OPERATOR_EQ)
-            .with_operands(LITERAL_TYPE_STRING, LITERAL_TYPE_STRING)
+            .with_both_operands_as(LITERAL_TYPE_STRING)
+            .as_native_executor(api::are_strings_equal)
 
             .operator("is not", OPERATOR_NEQ)
-            .with_operands(LITERAL_TYPE_STRING, LITERAL_TYPE_STRING)
+            .with_both_operands_as(LITERAL_TYPE_STRING)
+            // TODO either a separate function or multiple instructions?
     ;
 
     api
         .operator_group("String concatenation", LITERAL_TYPE_STRING)
             .operator("+", OPERATOR_ADD)
-            .with_operands(LITERAL_TYPE_STRING, LITERAL_TYPE_STRING)
+            .with_both_operands_as(LITERAL_TYPE_STRING)
+            .as_native_executor(api::concatenate_strings)
     ;
 
     api
         .operator_group("And", LITERAL_TYPE_BOOL)
             .operator("and", OPERATOR_AND)
-            .with_operands(LITERAL_TYPE_BOOL, LITERAL_TYPE_BOOL)
+            .with_both_operands_as(LITERAL_TYPE_BOOL)
     ;
 
     api
         .operator_group("Or", LITERAL_TYPE_BOOL)
             .operator("or", OPERATOR_OR)
-            .with_operands(LITERAL_TYPE_BOOL, LITERAL_TYPE_BOOL)
+            .with_both_operands_as(LITERAL_TYPE_BOOL)
     ;
 
     api
