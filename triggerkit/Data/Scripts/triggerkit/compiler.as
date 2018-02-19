@@ -23,8 +23,11 @@ enum Operator_Type {
     OPERATOR_DIV,
 
     OPERATOR_EQ,
+    OPERATOR_NEQ,
     OPERATOR_GT,
+    OPERATOR_GE,
     OPERATOR_LT,
+    OPERATOR_LE,
 
     OPERATOR_LAST
 }
@@ -44,8 +47,37 @@ enum Literal_Type {
     LITERAL_TYPE_LAST
 }
 
+class Expression {
+    Expression_Type type;
+
+    Literal_Type literal_type;
+    Literal_Type array_type;
+
+    Operator_Type operator_type;
+
+    Memory_Cell literal_value;
+
+    // Identifier/Function call/Declaration/Assignment
+    string identifier_name;
+
+    // Operator
+    Expression@ left_operand;
+    Expression@ right_operand;
+
+    // If/While/For condition/Assignment/Declaration
+    Expression@ value_expression;
+
+    // Function args
+    array<Expression@> arguments;
+
+    // Block
+    array<Expression@> block_body;
+    array<Expression@> else_block_body;
+}
+
 class Translation_Context {
     array<Function_Definition@>@ function_definitions;
+    array<Operator_Definition@>@ operator_definitions;
 
     dictionary native_function_indices;
     dictionary user_function_indices;
@@ -205,6 +237,16 @@ uint declare_local_variable_and_advance(Translation_Context@ ctx, string name) {
     get_current_function_translation_unit(ctx).variable_scope.local_variable_indices[name] = new_index;
 
     return new_index;
+}
+
+Operator_Definition@ find_operator_definition(Translation_Context@ ctx, string name) {
+    for (uint operator_index = 0; operator_index < ctx.operator_definitions.length(); operator_index++) {
+        if (ctx.operator_definitions[operator_index].name == name) {
+            return ctx.operator_definitions[operator_index];
+        }
+    }
+
+    return null;
 }
 
 void emit_instruction(Instruction@ instruction, array<Instruction>@ target) {
@@ -395,6 +437,8 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         }
 
         case EXPRESSION_OPERATOR: {
+            //Operator_Definition@ operator_definition = find_operator_definition(ctx, expression.identifier_name);
+
             switch (expression.operator_type) {
                 case OPERATOR_OR: {
                     emit_expression_bytecode(ctx, expression.left_operand);

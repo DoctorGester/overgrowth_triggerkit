@@ -1,3 +1,13 @@
+// Operators todos:
+//  Implement operators in the compiler: think on how we could generalize the code of determine_expression_literal_type
+//      I guess we should be able to reduce an operator either to a singular instruction or a native function call,
+//      maybe create a general callback which allows you to emit instructions? Sounds dirty.
+//      A separate instruction/native_call/nothing would probably do? But then some operator handling (AND/OR) is in the general code
+//      and some are in the API? Weird. But we probably won't have other and/or operators there anyway.
+//  Operators in the statement popup when editing conditions, again think about code generalization with the expression editor
+//      maybe we even should use an expression editor here? Then you would be able to select a literal value,
+//      but we could also just remove the literal value part when calling from a block and leave the variable/operators
+
 // More dialogue functions
 // Operator support in UI
 // Exclude certain functions (like boolean comparisons) from the list of available actions
@@ -17,6 +27,8 @@
 // Figure out another demo with proper dialogues
 // Make even more demos, abandon this one!
 // Varargs for string concatenation? We could combine them into an array and pass that easily
+// Function categories
+// Minimum size for both action editor and globals window
 
 // UI: User functions!
 // Compiler: Make the compiler multipass, currently can't call routines which were not parsed yet
@@ -48,150 +60,8 @@
 #include "triggerkit/shared_definitions.as"
 #include "triggerkit/dialogue/dialogue.as"
 
-class Expression {
-    Expression_Type type;
-
-    Literal_Type literal_type;
-    Literal_Type array_type;
-
-    Operator_Type operator_type;
-
-    Memory_Cell literal_value;
-
-    // Identifier/Function call/Declaration/Assignment
-    string identifier_name;
-
-    // Operator
-    Expression@ left_operand;
-    Expression@ right_operand;
-
-    // If/While/For condition/Assignment/Declaration
-    Expression@ value_expression;
-
-    // Function args
-    array<Expression@> arguments;
-
-    // Block
-    array<Expression@> block_body;
-    array<Expression@> else_block_body;
-}
-
 Virtual_Machine@ vm;
 Trigger_Kit_State@ state;
-
-Expression@ make_empty_lit(Literal_Type literal_type) {
-    Expression expression;
-    expression.type = EXPRESSION_LITERAL;
-    expression.literal_type = literal_type;
-
-    return expression;
-}
-
-Expression@ make_lit(float v) {
-    Expression expression;
-    expression.type = EXPRESSION_LITERAL;
-    expression.literal_type = LITERAL_TYPE_NUMBER;
-    expression.literal_value.number_value = v;
-
-    return expression;
-}
-
-Expression@ make_lit(string v) {
-    Expression expression;
-    expression.type = EXPRESSION_LITERAL;
-    expression.literal_type = LITERAL_TYPE_STRING;
-    expression.literal_value.string_value = v;
-
-    return expression;
-}
-
-Expression@ make_lit(bool v) {
-    Expression expression;
-    expression.type = EXPRESSION_LITERAL;
-    expression.literal_type = LITERAL_TYPE_BOOL;
-    expression.literal_value.number_value = bool_to_number(v);
-
-    return expression;
-}
-
-Expression@ make_return(Expression@ value) {
-    Expression expression;
-    expression.type = EXPRESSION_RETURN;
-    @expression.value_expression = value;
-
-    return expression;
-}
-
-Expression@ make_ident(string name) {
-    Expression expression;
-    expression.type = EXPRESSION_IDENTIFIER;
-    expression.identifier_name = name;
-
-    return expression;
-}
-
-Expression@ make_declaration(Literal_Type type, string name, Expression@ right) {
-    Expression expression;
-    expression.type = EXPRESSION_DECLARATION;
-    expression.literal_type = type;
-    expression.identifier_name = name;
-    @expression.value_expression = right;
-
-    return expression;
-}
-
-Expression@ make_op_expr(Operator_Type type, Expression@ left, Expression@ right) {
-    Expression expression;
-    expression.type = EXPRESSION_OPERATOR;
-    expression.operator_type = type;
-
-    @expression.left_operand = left;
-    @expression.right_operand = right;
-
-    return expression;
-}
-
-Expression@ make_function_call(string name) {
-    Expression@ expr = Expression();
-    expr.type = EXPRESSION_CALL;
-    expr.identifier_name = name;
-
-    return expr;
-}
-
-Expression@ make_assignment(string variable, Expression@ right) {
-    Expression expression;
-    expression.type = EXPRESSION_ASSIGNMENT;
-    expression.identifier_name = variable;
-    @expression.value_expression = right;
-
-    return expression;
-}
-
-Expression@ make_while(Expression@ condition, array<Expression@>@ body) {
-    Expression@ expression = Expression();
-    expression.type = EXPRESSION_WHILE;
-    @expression.value_expression = condition;
-    expression.block_body = body;
-
-    return expression;
-}
-
-Expression@ make_if(Expression@ condition, array<Expression@>@ then_body = null, array<Expression@>@ else_body = null) {
-    Expression@ expression = Expression();
-    expression.type = EXPRESSION_IF;
-    @expression.value_expression = condition;
-
-    if (then_body !is null) {
-        expression.block_body = then_body;
-    }
-    
-    if (else_body !is null) {
-        expression.else_block_body = else_body;
-    }
-
-    return expression;
-}
 
 double get_time_delta_in_ms(uint64 start) {
     return double((GetPerformanceCounter() - start)*1000) / GetPerformanceFrequency();
@@ -324,6 +194,22 @@ void initialize_state_and_vm() {
     }
 }
 
+array<Operator_Definition@>@ collect_operator_definitions(array<Operator_Group@>@ operator_groups) {
+    array<Operator_Definition@> result;
+
+    for (uint group_index = 0; group_index < operator_groups.length(); group_index++) {
+        Operator_Group@ group = operator_groups[group_index];
+
+        for (uint operator_index = 0; operator_index < group.operators.length(); operator_index++) {
+            Operator_Definition@ operator = group.operators[operator_index];
+
+            result.insertLast(group.operators[operator_index]);
+        }
+    }
+
+    return result;
+}
+
 void compile_everything() {
     auto time = GetPerformanceCounter();
 
@@ -338,6 +224,7 @@ void compile_everything() {
     
     Translation_Context translation_context;
     @translation_context.function_definitions = api_builder.functions;
+    @translation_context.operator_definitions = collect_operator_definitions(api_builder.operator_groups);
     translation_context.global_variable_scope = global_variables;
 
     compile_user_functions(translation_context);
@@ -564,4 +451,118 @@ int HasCameraControl() {
 
 bool DialogueCameraControl() {
     return environment::is_in_dialogue_mode;
+}
+
+Expression@ make_empty_lit(Literal_Type literal_type) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = literal_type;
+
+    return expression;
+}
+
+Expression@ make_lit(float v) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = LITERAL_TYPE_NUMBER;
+    expression.literal_value.number_value = v;
+
+    return expression;
+}
+
+Expression@ make_lit(string v) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = LITERAL_TYPE_STRING;
+    expression.literal_value.string_value = v;
+
+    return expression;
+}
+
+Expression@ make_lit(bool v) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = LITERAL_TYPE_BOOL;
+    expression.literal_value.number_value = bool_to_number(v);
+
+    return expression;
+}
+
+Expression@ make_return(Expression@ value) {
+    Expression expression;
+    expression.type = EXPRESSION_RETURN;
+    @expression.value_expression = value;
+
+    return expression;
+}
+
+Expression@ make_ident(string name) {
+    Expression expression;
+    expression.type = EXPRESSION_IDENTIFIER;
+    expression.identifier_name = name;
+
+    return expression;
+}
+
+Expression@ make_declaration(Literal_Type type, string name, Expression@ right) {
+    Expression expression;
+    expression.type = EXPRESSION_DECLARATION;
+    expression.literal_type = type;
+    expression.identifier_name = name;
+    @expression.value_expression = right;
+
+    return expression;
+}
+
+Expression@ make_op_expr(Operator_Type type, Expression@ left, Expression@ right) {
+    Expression expression;
+    expression.type = EXPRESSION_OPERATOR;
+    expression.operator_type = type;
+
+    @expression.left_operand = left;
+    @expression.right_operand = right;
+
+    return expression;
+}
+
+Expression@ make_function_call(string name) {
+    Expression@ expr = Expression();
+    expr.type = EXPRESSION_CALL;
+    expr.identifier_name = name;
+
+    return expr;
+}
+
+Expression@ make_assignment(string variable, Expression@ right) {
+    Expression expression;
+    expression.type = EXPRESSION_ASSIGNMENT;
+    expression.identifier_name = variable;
+    @expression.value_expression = right;
+
+    return expression;
+}
+
+Expression@ make_while(Expression@ condition, array<Expression@>@ body) {
+    Expression@ expression = Expression();
+    expression.type = EXPRESSION_WHILE;
+    @expression.value_expression = condition;
+    expression.block_body = body;
+
+    return expression;
+}
+
+Expression@ make_if(Expression@ condition, array<Expression@>@ then_body = null, array<Expression@>@ else_body = null) {
+    Expression@ expression = Expression();
+    expression.type = EXPRESSION_IF;
+    @expression.value_expression = condition;
+
+    if (then_body !is null) {
+        expression.block_body = then_body;
+    }
+    
+    if (else_body !is null) {
+        expression.else_block_body = else_body;
+    }
+
+    return expression;
 }

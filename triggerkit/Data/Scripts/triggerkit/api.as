@@ -87,9 +87,48 @@ class Function_Definition {
     }
 }
 
+class Operator_Definition {
+    string name;
+    string list_name;
+    Literal_Type left_operand_type;
+    Literal_Type right_operand_type;
+
+    Operator_Group@ parent_group;
+
+    Operator_Type operator_type;
+    Native_Function_Executor@ as_native_executor;
+}
+
+class Operator_Group {
+    string name;
+    Literal_Type return_type;
+    array<Operator_Definition@> operators;
+
+    private Operator_Definition@ current_instance;
+
+    Operator_Group@ operator(string name, Operator_Type operator_type) {
+        @current_instance = Operator_Definition();
+        @current_instance.parent_group = this;
+        current_instance.name = name;
+        current_instance.operator_type = operator_type;
+
+        operators.insertLast(current_instance);
+
+        return this;
+    }
+
+    Operator_Group@ with_operands(Literal_Type left, Literal_Type right) {
+        current_instance.left_operand_type = left;
+        current_instance.right_operand_type = right;
+
+        return this;
+    }
+}
+
 class Api_Builder {
     array<Function_Definition@>@ functions = {};
     array<Event_Definition@>@ events = {};
+    array<Operator_Group@>@ operator_groups = {};
 
     Api_Builder() {
         events.resize(EVENT_LAST);
@@ -115,6 +154,16 @@ class Api_Builder {
         @instance.user_code = user_code;
 
         functions.insertLast(instance);
+
+        return instance;
+    }
+
+    Operator_Group@ operator_group(string name, Literal_Type return_type) {
+        Operator_Group instance;
+        instance.name = name;
+        instance.return_type = return_type;
+
+        operator_groups.insertLast(instance);
 
         return instance;
     }
@@ -229,110 +278,185 @@ Thread@ run_trigger(Trigger@ trigger, array<Memory_Cell@>@ parameters) {
 }
 
 Api_Builder@ build_api() {
-    Api_Builder builder;
+    Api_Builder api;
 
-    builder
+    // TODO types shorthand like Literal_Type type_number = LITERAL_TYPE_NUMBER?
+
+    api
         .event(EVENT_CHARACTER_ENTERS_REGION)
         .list_name("Character enters a region")
         .defines("Entering Character", LITERAL_TYPE_STRING)
         .defines("Region being entered", LITERAL_TYPE_STRING)
         .fmt("A character enters a region");
 
-    builder
+    // TODO the pairs are always the same, maybe we should shorten all that?
+    api
+        .operator_group("Arithmetics", LITERAL_TYPE_NUMBER)
+            .operator("+", OPERATOR_ADD)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+
+            .operator("-", OPERATOR_SUB)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+
+            .operator("*", OPERATOR_MUL)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+
+            .operator("/", OPERATOR_DIV)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+    ;
+    
+    api
+        .operator_group("Boolean comparison", LITERAL_TYPE_BOOL)
+            .operator("is", OPERATOR_EQ)
+            .with_operands(LITERAL_TYPE_BOOL, LITERAL_TYPE_BOOL)
+
+            .operator("is not", OPERATOR_NEQ)
+            .with_operands(LITERAL_TYPE_BOOL, LITERAL_TYPE_BOOL)
+    ;
+
+    api
+        .operator_group("Number comparison", LITERAL_TYPE_BOOL)
+            .operator("is", OPERATOR_EQ)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+
+            .operator("is not", OPERATOR_NEQ)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+
+            .operator("is more than", OPERATOR_GT)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+
+            .operator("is less than", OPERATOR_LT)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+
+            .operator("is more or equals to", OPERATOR_GE)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+
+            .operator("is less or equals to", OPERATOR_LE)
+            .with_operands(LITERAL_TYPE_NUMBER, LITERAL_TYPE_NUMBER)
+    ;
+
+    api
+        .operator_group("String comparison", LITERAL_TYPE_BOOL)
+            .operator("is", OPERATOR_EQ)
+            .with_operands(LITERAL_TYPE_STRING, LITERAL_TYPE_STRING)
+
+            .operator("is not", OPERATOR_NEQ)
+            .with_operands(LITERAL_TYPE_STRING, LITERAL_TYPE_STRING)
+    ;
+
+    api
+        .operator_group("String concatenation", LITERAL_TYPE_STRING)
+            .operator("+", OPERATOR_ADD)
+            .with_operands(LITERAL_TYPE_STRING, LITERAL_TYPE_STRING)
+    ;
+
+    api
+        .operator_group("And", LITERAL_TYPE_BOOL)
+            .operator("and", OPERATOR_AND)
+            .with_operands(LITERAL_TYPE_BOOL, LITERAL_TYPE_BOOL)
+    ;
+
+    api
+        .operator_group("Or", LITERAL_TYPE_BOOL)
+            .operator("or", OPERATOR_OR)
+            .with_operands(LITERAL_TYPE_BOOL, LITERAL_TYPE_BOOL)
+    ;
+
+    api
         .func("do_nothing", api::do_nothing)
         .list_name("Do nothing")
         .fmt("Do nothing");
 
-    builder
+    api
         .func("log1", api::log1)
         .list_name("Test function 1")
         .fmt("Log 1");
 
-    builder
+    api
         .func("log2", api::log2)
         .list_name("Test function 2")
         .fmt("Test function 2");
 
-    builder
+    api
         .func("print", api::print)
         .list_name("Print a number to console")
         .fmt("Print {} to console")
         .takes(LITERAL_TYPE_NUMBER);
 
-    builder
+    api
         .func("print_str", api::print_str)
         .list_name("Display text")
         .fmt("Display {}")
         .takes(LITERAL_TYPE_STRING);
 
-    builder
+    api
         .func("rnd", api::rnd)
         .list_name("Random number")
         .fmt("Random number")
         .returns(LITERAL_TYPE_NUMBER);
 
-    builder
+    api
         .func("get_game_time", api::get_game_time)
         .list_name("Current game time")
         .fmt("Current game time")
         .returns(LITERAL_TYPE_NUMBER);
 
-    builder
+    api
         .func("dialogue_say", api::dialogue_say)
         .fmt("> {}: {}")
         .category(CATEGORY_DIALOGUE)
         .takes(LITERAL_TYPE_STRING)
         .takes(LITERAL_TYPE_STRING);
 
-    builder
+    api
         .func("start_dialogue", api::start_dialogue)
         .fmt("Show dialogue screen");
 
-    builder
+    api
         .func("end_dialogue", api::end_dialogue)
         .fmt("Hide dialogue screen");
 
-    builder
+    api
         .func("is_in_dialogue", api::is_in_dialogue)
         .fmt("Is waiting for a dialogue line to end");
 
-    builder
+    api
         .func("sleep", api::sleep)
         .category(CATEGORY_WAIT)
         .fmt("Sleep until the next update");
 
-    builder
+    api
         .func("are_strings_equal", api::are_strings_equal)
-        .list_name("String comparison")
+        .list_name("__String comparison")
         .fmt("{} is {}")
         .takes(LITERAL_TYPE_STRING)
         .takes(LITERAL_TYPE_STRING)
         .returns(LITERAL_TYPE_BOOL);
 
-    builder
+    api
         .func("are_bools_equal", api::are_bools_equal)
-        .list_name("Boolean comparison")
+        .list_name("__Boolean comparison")
         .fmt("{} is {}")
         .takes(LITERAL_TYPE_BOOL)
         .takes(LITERAL_TYPE_BOOL)
         .returns(LITERAL_TYPE_BOOL);
 
-    builder
-        .func("string_concat", api::string_concat)
-        .list_name("String concatenation")
+    api
+        .func("string_concat", api::concatenate_strings)
+        .list_name("__String concatenation")
         .fmt("{} + {}")
         .takes(LITERAL_TYPE_STRING)
         .takes(LITERAL_TYPE_STRING)
         .returns(LITERAL_TYPE_STRING);
 
-    builder
+    api
         .func("n2s", api::n2s)
         .list_name("Number to text")
         .fmt("{} as text")
         .takes(LITERAL_TYPE_NUMBER)
         .returns(LITERAL_TYPE_STRING);
 
-    builder
+    api
         .func("nlt", api::nlt)
         .list_name("Number LT")
         .fmt("{} < {}")
@@ -342,18 +466,18 @@ Api_Builder@ build_api() {
 
     // Userland functions
 
-    builder
+    api
         .func("wait_until_dialogue_line_is_complete", api::wait_until_dialogue_line_is_complete())
         .category(CATEGORY_WAIT)
         .fmt("Wait for the dialogue line to end");
 
-    builder
+    api
         .func("wait", api::wait())
         .fmt("Wait for {} seconds")
         .takes(LITERAL_TYPE_NUMBER, "seconds")
         .category(CATEGORY_WAIT);
 
-    builder
+    api
         .func("sub_test", api::sub_func())
         .fmt("{} - {}")
         .takes(LITERAL_TYPE_NUMBER, "left")
@@ -361,7 +485,7 @@ Api_Builder@ build_api() {
         .returns(LITERAL_TYPE_NUMBER)
         .category(CATEGORY_WAIT);
 
-    return builder;
+    return api;
 }
 
 namespace environment {
@@ -401,7 +525,7 @@ namespace api {
         ctx.return_string(ctx.take_number() + "");
     }
 
-    void string_concat(Native_Call_Context@ ctx) {
+    void concatenate_strings(Native_Call_Context@ ctx) {
         string left = ctx.take_string();
         string right = ctx.take_string();
 

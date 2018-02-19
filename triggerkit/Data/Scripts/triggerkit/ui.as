@@ -18,6 +18,7 @@ class Trigger_Kit_State {
     array<Expression@> edited_expressions;
     array<Function_Definition@> function_definitions;
     array<Event_Definition@> native_events;
+    array<Operator_Group@> operator_groups;
 
     int current_stack_depth = 0;
     int selected_action_category = 0;
@@ -51,6 +52,18 @@ class Ui_Variable_Scope {
     array<Variable>@ variables;
 }
 
+class Ui_Special_Action {
+    Expression_Type expression_type;
+    string action_name;
+
+    Ui_Special_Action() {}
+
+    Ui_Special_Action(string name, Expression_Type type) {
+        this.expression_type = type;
+        this.action_name = name;
+    }
+}
+
 void push_ui_variable_scope(Ui_Frame_State@ frame) {
     Ui_Variable_Scope new_scope;
     @new_scope.parent_scope = frame.top_scope;
@@ -64,7 +77,7 @@ void pop_ui_variable_scope(Ui_Frame_State@ frame) {
     @frame.top_scope = frame.top_scope.parent_scope;
 }
 
-void collect_scope_variables(Ui_Variable_Scope@ from_scope, array<Variable@>@ target, Literal_Type limit_to) {
+void collect_scope_variables(Ui_Variable_Scope@ from_scope, array<Variable@>@ target, Literal_Type limit_to = LITERAL_TYPE_VOID) {
     // TODO Variable shadowing duplicates variables!
     for (uint variable_index = 0; variable_index < from_scope.variables.length(); variable_index++) {
         if (limit_to == LITERAL_TYPE_VOID || limit_to == from_scope.variables[variable_index].type) {
@@ -77,12 +90,23 @@ void collect_scope_variables(Ui_Variable_Scope@ from_scope, array<Variable@>@ ta
     }
 }
 
+Variable@ make_variable(Literal_Type type, string name) {
+    Variable variable;
+    variable.type = type;
+    variable.name = name;
+
+    return variable;
+}
+
 Trigger_Kit_State@ make_trigger_kit_state() {
     Trigger_Kit_State state;
 
+    // TODO this COPIES all arrays, that's bad
+    // We could also just store the api builder itself in the state
     Api_Builder@ api_builder = build_api();
     state.function_definitions = api_builder.functions;
     state.native_events = api_builder.events;
+    state.operator_groups = api_builder.operator_groups;
 
     return state;
 }
@@ -231,36 +255,76 @@ void draw_editor_popup_footer(Ui_Frame_State@ frame) {
     }
 }
 
-void draw_editor_popup_function_selector(Expression@ expression, Literal_Type limit_to = LITERAL_TYPE_VOID) {
-    array<Function_Definition@>@ source_functions;
+void draw_editor_popup_function_selector(Expression@ expression, Ui_Frame_State@ frame, Literal_Type limit_to) {
+    array<Operator_Group@>@ operator_groups = filter_operator_groups_by_return_type(limit_to);
+    array<Function_Definition@>@ source_functions = filter_function_definitions_by_return_type(limit_to);
 
-    if (limit_to != LITERAL_TYPE_VOID) {
-        @source_functions = filter_function_definitions_by_return_type(limit_to);
-    } else {
-        @source_functions = state.function_definitions;
+    int selected_expression = 0;
+    array<string> expression_names;
+
+    int functions_offset = operator_groups.length();
+
+    bool fit_operator_to_a_selected_action = false;
+
+    Operator_Definition@ current_fitting_operator = find_operator_definition_by_expression_in_context(expression, frame);
+
+    for (uint group_index = 0; group_index < operator_groups.length(); group_index++) {
+        Operator_Group@ group = operator_groups[group_index];
+
+        if (current_fitting_operator !is null && group is current_fitting_operator.parent_group) {
+            selected_expression = group_index;
+            fit_operator_to_a_selected_action = true;
+        }
+
+        expression_names.insertLast(group.name);
     }
-
-    int selected_function = 0;
-    array<string> function_names;
 
     for (uint function_index = 0; function_index < source_functions.length(); function_index++) {
         Function_Definition@ function_definition = source_functions[function_index];
 
         string name = get_function_name_for_list(function_definition);
 
-        if (expression.identifier_name == function_definition.function_name) {
-            selected_function = function_index;
+        if (!fit_operator_to_a_selected_action && expression.identifier_name == function_definition.function_name) {
+            selected_expression = function_index + functions_offset;
         }
 
-        function_names.insertLast(name);
+        expression_names.insertLast(name);
     }
 
-    if (ImGui_Combo("##function_selector", selected_function, function_names)) {
-        Function_Definition@ selected_definition = source_functions[selected_function];
+    if (ImGui_Combo("##function_selector", selected_expression, expression_names)) {
+        if (selected_expression < functions_offset) {
+            Operator_Definition@ first_operator = operator_groups[selected_expression].operators[0];
 
-        expression.type = EXPRESSION_CALL;
+            expression.type = EXPRESSION_OPERATOR;
 
-        fill_function_call_expression_from_function_definition(expression, selected_definition);
+            fill_operator_expression_from_operator_definition(expression, first_operator);
+        } else {
+            Function_Definition@ selected_definition = source_functions[selected_expression - functions_offset];
+
+            expression.type = EXPRESSION_CALL;
+
+            fill_function_call_expression_from_function_definition(expression, selected_definition);
+        }
+    }
+}
+
+void handle_expression_type_changed_to(Expression_Type expression_type, Expression@ expression) {
+    switch (expression_type) {
+        case EXPRESSION_DECLARATION: {
+            expression.literal_type = LITERAL_TYPE_NUMBER;
+            @expression.value_expression = make_lit(0);
+            break;
+        }
+
+        case EXPRESSION_ASSIGNMENT: {
+            @expression.value_expression = make_empty_lit(LITERAL_TYPE_BOOL);
+            break;
+        }
+
+        case EXPRESSION_IF: {
+            @expression.value_expression = make_lit(true);
+            break;
+        }
     }
 }
 
@@ -273,34 +337,30 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
 
     array<string> action_names;
     array<Function_Definition@>@ source_functions;
+    array<Ui_Special_Action> special_actions;
 
     if (limit_to != LITERAL_TYPE_VOID) {
         @source_functions = filter_function_definitions_by_return_type(limit_to);
     } else {
         @source_functions = state.function_definitions;
 
-        action_names = array<string> = { "Declare Variable", "Assign Variable", "If/Then/Else" };
+        special_actions = array<Ui_Special_Action> = {
+            Ui_Special_Action("Declare Variable", EXPRESSION_DECLARATION),
+            Ui_Special_Action("Assign Variable", EXPRESSION_ASSIGNMENT),
+            Ui_Special_Action("If/Then/Else", EXPRESSION_IF),
+            Ui_Special_Action("While/Do", EXPRESSION_WHILE)
+        };
 
-        // TODO This is dirty, we could have an array of little structures defined somewhere which have a name/expr_type
-        switch (expression.type) {
-            case EXPRESSION_DECLARATION: {
-                selected_action = 0;
-                break;
+        for (uint action_index = 0; action_index < special_actions.length(); action_index++) {
+            if (special_actions[action_index].expression_type == expression.type) {
+                selected_action = action_index;
             }
 
-            case EXPRESSION_ASSIGNMENT: {
-                selected_action = 1;
-                break;
-            }
-
-            case EXPRESSION_IF: {
-                selected_action = 2;
-                break;
-            }
+            action_names.insertLast(special_actions[action_index].action_name);
         }
     }
 
-    uint functions_offset = action_names.length();
+    uint functions_offset = special_actions.length();
 
     for (uint function_index = 0; function_index < source_functions.length(); function_index++) {
         Function_Definition@ function_definition = source_functions[function_index];
@@ -315,33 +375,17 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
     }
 
     if (ImGui_Combo("##function_selector", selected_action, action_names)) {
-        switch (selected_action) {
-            case 0: {
-                expression.type = EXPRESSION_DECLARATION;
-                expression.literal_type = LITERAL_TYPE_NUMBER;
-                @expression.value_expression = make_lit(0);
-                break;
-            }
+        if (selected_action < int(special_actions.length())) {
+            Expression_Type special_type = special_actions[selected_action].expression_type;
+            expression.type = special_type;
 
-            case 1: {
-                expression.type = EXPRESSION_ASSIGNMENT;
-                @expression.value_expression = make_empty_lit(LITERAL_TYPE_BOOL);
-                break;
-            }
+            handle_expression_type_changed_to(special_type, expression);
+        } else {
+            expression.type = EXPRESSION_CALL;
 
-            case 2: {
-                expression.type = EXPRESSION_IF;
-                @expression.value_expression = make_lit(true);
-                break;
-            }
+            Function_Definition@ selected_definition = source_functions[selected_action - functions_offset];
 
-            default: {
-                expression.type = EXPRESSION_CALL;
-
-                Function_Definition@ selected_definition = source_functions[selected_action - functions_offset];
-
-                fill_function_call_expression_from_function_definition(expression, selected_definition);
-            }
+            fill_function_call_expression_from_function_definition(expression, selected_definition);
         }
     }
 
@@ -361,7 +405,7 @@ bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Varia
     collect_scope_variables(frame.top_scope, scope_variables, limit_to);
 
     array<string> variable_names;
-    int selected_variable = -1;
+    int selected_variable = 0;
 
     for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
         string variable_name = scope_variables[variable_index].name;
@@ -392,7 +436,13 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) 
     const int offset = 200;
 
     if (ImGui_RadioButton("Variable", expression.type == EXPRESSION_IDENTIFIER)) {
-        expression.type = EXPRESSION_IDENTIFIER;
+        array<Variable@> scope_variables;
+        collect_scope_variables(frame.top_scope, scope_variables, limit_to);
+
+        if (scope_variables.length() > 0) {
+            expression.type = EXPRESSION_IDENTIFIER;
+            expression.identifier_name = scope_variables[0].name;
+        }
     }
 
     ImGui_SameLine();
@@ -408,32 +458,44 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) 
     bool is_an_operator = expression.type == EXPRESSION_OPERATOR;
 
     if (ImGui_RadioButton("Function", is_a_function_call || is_an_operator)) {
-        expression.type = EXPRESSION_CALL;
+        expression.type = EXPRESSION_OPERATOR;
+
+        // TODO this is not a good way to set a default value
+        array<Operator_Group@>@ operator_groups = filter_operator_groups_by_return_type(limit_to);
+
+        fill_operator_expression_from_operator_definition(expression, operator_groups[0].operators[0]);
     }
 
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
-    draw_editor_popup_function_selector(expression, limit_to: limit_to);
+    draw_editor_popup_function_selector(expression, frame, limit_to);
 
     if (is_a_function_call || is_an_operator) {
         ImGui_SetCursorPosX(offset);
+
         draw_expression_as_broken_into_pieces(expression, frame);
+    } else {
+        ImGui_NewLine();
     }
 
     if (ImGui_RadioButton("Value", expression.type == EXPRESSION_LITERAL)) {
         expression.type = EXPRESSION_LITERAL;
+        expression.literal_type = limit_to;
     }
 
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
 
-    draw_editable_literal(expression.literal_type, expression.literal_value, frame.unique_id("editable_literal"));
+    if (draw_editable_literal(expression.literal_type, expression.literal_value, frame.unique_id("editable_literal"))) {
+        expression.type = EXPRESSION_LITERAL;
+        expression.literal_type = limit_to;
+    }
     
     draw_editor_popup_footer(frame);
 }
 
 void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, bool parent_is_a_code_block = false, Literal_Type limit_to = LITERAL_TYPE_VOID) {
-    if (ImGui_Button(expression_to_string(expression) + frame.unique_id("editable_button"))) {
+    if (ImGui_Button(expression_to_string(expression, frame) + frame.unique_id("editable_button"))) {
         open_expression_editor_popup(expression, frame);
     }
 
@@ -457,30 +519,31 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
     }
 }
 
-void draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value, string unique_id) {
+bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value, string unique_id) {
     switch (literal_type) {
         case LITERAL_TYPE_NUMBER:
-            ImGui_InputFloat(unique_id, literal_value.number_value, 1);
-            break;
-        case LITERAL_TYPE_STRING:
+            return ImGui_InputFloat(unique_id, literal_value.number_value, 1);
+        case LITERAL_TYPE_STRING: {
             ImGui_SetTextBuf(literal_value.string_value);
 
-            if (ImGui_InputText(unique_id)) {
+            bool was_edited = ImGui_InputText(unique_id);
+
+            if (was_edited) {
                 literal_value.string_value = ImGui_GetTextBuf();
             }
 
-            break;
+            return was_edited;
+        }
+
         case LITERAL_TYPE_BOOL: {
             bool value = number_to_bool(literal_value.number_value);
+            bool was_edited = ImGui_Checkbox(value ? "True" : "False" + unique_id, value);
 
-            if (ImGui_Checkbox(unique_id, value)) {
+            if (was_edited) {
                 literal_value.number_value = bool_to_number(value);
             }
 
-            ImGui_SameLine();
-            ImGui_Text(value ? "True" : "False");
-            // ImGui_Checkbox("###LiteralFloat" + index, literal_value.int_value);
-            break;
+            return was_edited;
         }
 
         case LITERAL_TYPE_OBJECT:
@@ -503,6 +566,8 @@ void draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
             ImGui_Text("Array input here");
             break;
     }
+
+    return false;
 }
 
 bool draw_type_selector(Literal_Type& input_type, string text_label) {
@@ -591,6 +656,41 @@ void draw_function_call_as_broken_into_pieces(Expression@ expression, Ui_Frame_S
     ImGui_Text(pieces[pieces.length() - 1]);
 }
 
+void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@ frame) {
+    Operator_Definition@ fitting_operator = find_operator_definition_by_expression_in_context(expression, frame);
+    Operator_Group@ operator_group = fitting_operator.parent_group;
+
+    array<string> operator_names;
+    int selected_operator = 0;
+    int max_text_width = 35;
+
+    for (uint operator_index = 0; operator_index < operator_group.operators.length(); operator_index++) {
+        Operator_Definition@ operator = operator_group.operators[operator_index];
+
+        if (operator.operator_type == fitting_operator.operator_type) {
+            selected_operator = operator_index;
+        }
+
+        operator_names.insertLast(colored_keyword(operator.name));
+
+        int operator_name_width = int(ImGui_CalcTextSize(operator.name).x + 35);
+        max_text_width = max(operator_name_width, max_text_width);
+    }
+
+    draw_expression_and_continue_on_the_same_line(expression.left_operand, frame, limit_to: fitting_operator.left_operand_type);
+
+    ImGui_PushItemWidth(max_text_width);
+
+    if (ImGui_Combo(frame.unique_id("operator_selector"), selected_operator, operator_names)) {
+        expression.operator_type = operator_group.operators[selected_operator].operator_type;
+    }
+
+    ImGui_PopItemWidth();
+    ImGui_SameLine();
+
+    draw_editable_expression(expression.right_operand, frame, limit_to: fitting_operator.right_operand_type);
+}
+
 void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@ frame) {
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
@@ -605,11 +705,7 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
         }
 
         case EXPRESSION_OPERATOR: {
-            pre_expression_text("(");
-            draw_expression_and_continue_on_the_same_line(expression.left_operand, frame);
-            pre_expression_text(operator_type_to_ui_string(expression.operator_type));
-            draw_editable_expression(expression.right_operand, frame);
-            post_expression_text(")");
+            draw_operator_as_broken_into_pieces(expression, frame);
             break;
         }
 
@@ -701,9 +797,7 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Li
         draw_editable_expression(expression, frame, true, limit_to: limit_to);
 
         if (expression.type == EXPRESSION_DECLARATION) {
-            Variable variable;
-            variable.name = expression.identifier_name;
-            variable.type = expression.literal_type;
+            Variable@ variable = make_variable(expression.literal_type, expression.identifier_name);
 
             frame.top_scope.variables.insertLast(variable);
         }
@@ -794,10 +888,7 @@ void draw_trigger_content(Trigger@ current_trigger) {
     Event_Definition@ trigger_event = state.native_events[current_trigger.event_type];
 
     for (uint variable_index = 0; variable_index < trigger_event.variable_types.length(); variable_index++) {
-        // TODO Code duplication
-        Variable variable;
-        variable.name = trigger_event.variable_names[variable_index];
-        variable.type = trigger_event.variable_types[variable_index];
+        Variable@ variable = make_variable(trigger_event.variable_types[variable_index], trigger_event.variable_names[variable_index]);
 
         frame.top_scope.variables.insertLast(variable);
     }
@@ -828,7 +919,7 @@ void draw_globals_modal() {
         ImGui_Image(icons::action_variable, vec2(16, 16));
         ImGui_SameLine();
 
-        ImGui_PushItemWidth(int(free_width * 0.2));
+        ImGui_PushItemWidth(int(free_width * 0.3));
 
         ImGui_SetTextBuf(variable.name);
         if (ImGui_InputText("###variable_name" + variable_index)) {
@@ -858,8 +949,8 @@ void draw_globals_modal() {
         }
 
         {
-            ImGui_PushItemWidth(int(free_width * 0.45));
-            draw_editable_literal(variable.type, variable.value, variable_index + "");
+            ImGui_PushItemWidth(int(free_width * 0.35));
+            draw_editable_literal(variable.type, variable.value, "###" + variable_index);
             ImGui_PopItemWidth();
         }
 
@@ -879,6 +970,6 @@ void draw_globals_modal() {
     ImGui_PopItemWidth();
 
     if (icon_button("Add", "variable_add", icons::action_variable)) {
-        state.global_variables.insertLast(Variable());
+        state.global_variables.insertLast(make_variable(LITERAL_TYPE_NUMBER, "New variable"));
     }
 }

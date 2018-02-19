@@ -42,6 +42,8 @@ Event_Type serializeable_string_to_event_type(string text) {
         }
     }
 
+    Log(error, "Can't deserialize " + text + " to event type");
+
     return EVENT_LAST;
 }
 
@@ -53,6 +55,8 @@ Operator_Type serializeable_string_to_operator_type(string text) {
         }
     }
 
+    Log(error, "Can't deserialize " + text + " to operator type");
+
     return OPERATOR_LAST;
 }
 
@@ -63,6 +67,8 @@ Literal_Type serializeable_string_to_literal_type(string text) {
             return Literal_Type(type_as_int);
         }
     }
+
+    Log(error, "Can't deserialize " + text + " to literal type");
 
     return LITERAL_TYPE_LAST;
 }

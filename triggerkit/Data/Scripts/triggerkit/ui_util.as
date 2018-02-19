@@ -10,26 +10,12 @@ namespace icons {
     TextureAssetRef action_dialogue = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Quest.png", TextureLoadFlags_NoMipmap);
 }
 
-string operator_type_to_ui_string(Operator_Type operator_type) {
-    switch (operator_type) {
-        case OPERATOR_AND: return "and";
-        case OPERATOR_OR: return "or";
-        case OPERATOR_EQ: return "is";
-        case OPERATOR_GT: return ">";
-        case OPERATOR_LT: return "<";
-        case OPERATOR_ADD: return "+";
-        case OPERATOR_SUB: return "-";
-    }
-
-    return "undefined";
-}
-
 string literal_type_to_ui_string(Literal_Type literal_type) {
     switch(literal_type) {
         case LITERAL_TYPE_VOID: return "Void";
         case LITERAL_TYPE_NUMBER: return "Number";
-        case LITERAL_TYPE_STRING: return "String";
-        case LITERAL_TYPE_BOOL: return "Bool";
+        case LITERAL_TYPE_STRING: return "Text";
+        case LITERAL_TYPE_BOOL: return "Boolean";
         case LITERAL_TYPE_OBJECT: return "Object";
         case LITERAL_TYPE_ITEM: return "Item";
         case LITERAL_TYPE_HOTSPOT: return "Hotspot";
@@ -76,12 +62,12 @@ string literal_to_ui_string(Expression@ literal) {
     return "not_implemented";
 }
 
-string function_call_to_string_simple(Expression@ expression) {
+string function_call_to_string_simple(Expression@ expression, Ui_Frame_State@ frame) {
     array<string> arguments;
     arguments.resize(expression.arguments.length());
 
     for (uint argument_index = 0; argument_index < expression.arguments.length(); argument_index++) {
-        arguments[argument_index] = expression_to_string(expression.arguments[argument_index]);
+        arguments[argument_index] = expression_to_string(expression.arguments[argument_index], frame);
     }
 
     return expression.identifier_name + "(" + join(arguments, ", ") + ")";
@@ -116,6 +102,42 @@ array<string>@ split_function_format_string_into_pieces(string format) {
     return result;
 }
 
+Literal_Type determine_expression_literal_type(Expression@ expression, Ui_Frame_State@ context) {
+    switch (expression.type) {
+        case EXPRESSION_LITERAL: return expression.literal_type;
+        case EXPRESSION_IDENTIFIER: {
+            array<Variable@> scope_variables;
+            collect_scope_variables(context.top_scope, scope_variables);
+
+            for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
+                if (scope_variables[variable_index].name == expression.identifier_name) {
+                    return scope_variables[variable_index].type;
+                }
+            }
+
+            break;
+        }
+
+        case EXPRESSION_CALL: {
+            Function_Definition@ definition = find_function_definition_by_function_name(expression.identifier_name);
+
+            return definition is null ? LITERAL_TYPE_VOID : definition.return_type;
+        }
+
+        case EXPRESSION_OPERATOR: {
+            Operator_Definition@ definition = find_operator_definition_by_expression_in_context(expression, context);
+
+            return definition is null ? LITERAL_TYPE_VOID : definition.parent_group.return_type;
+        }
+
+        default: {
+            Log(error, "Not an expression: " + expression.type);
+        }
+    }
+
+    return LITERAL_TYPE_VOID;
+}
+
 Function_Definition@ find_function_definition_by_function_name(string function_name) {
     for (uint function_index = 0; function_index < state.function_definitions.length(); function_index++) {
         if (state.function_definitions[function_index].function_name == function_name) {
@@ -126,11 +148,38 @@ Function_Definition@ find_function_definition_by_function_name(string function_n
     return null;
 }
 
-string function_call_to_string(Expression@ expression) {
+Operator_Definition@ find_operator_definition_by_expression_in_context(Expression@ expression, Ui_Frame_State@ context) {
+    if (expression.left_operand is null || expression.right_operand is null) {
+        return null;
+    }
+
+    Literal_Type l_type = determine_expression_literal_type(expression.left_operand, context);
+    Literal_Type r_type = determine_expression_literal_type(expression.right_operand, context);
+
+    return find_operator_definition_by_operator_type_and_operand_types(expression.operator_type, l_type, r_type);
+}
+
+Operator_Definition@ find_operator_definition_by_operator_type_and_operand_types(Operator_Type operator_type, Literal_Type l_type, Literal_Type r_type) {
+    for (uint group_index = 0; group_index < state.operator_groups.length(); group_index++) {
+        Operator_Group@ group = state.operator_groups[group_index];
+
+        for (uint operator_index = 0; operator_index < group.operators.length(); operator_index++) {
+            Operator_Definition@ operator = group.operators[operator_index];
+
+            if (operator.left_operand_type == l_type && operator.right_operand_type == r_type && operator.operator_type == operator_type) {
+                return operator;
+            }
+        }
+    }
+
+    return null;
+}
+
+string function_call_to_string(Expression@ expression, Ui_Frame_State@ frame) {
     Function_Definition@ function_definition = find_function_definition_by_function_name(expression.identifier_name);
 
     if (function_definition is null) {
-        return function_call_to_string_simple(expression);
+        return function_call_to_string_simple(expression, frame);
     }
 
     string result = "";
@@ -146,7 +195,7 @@ string function_call_to_string(Expression@ expression) {
             Expression@ argument_expression = expression.arguments[argument_index];
 
             if (argument_expression !is null) {
-                argument_as_string = expression_to_string(argument_expression);
+                argument_as_string = expression_to_string(argument_expression, frame);
 
                 if (argument_expression.type != EXPRESSION_LITERAL && argument_expression.type != EXPRESSION_IDENTIFIER) {
                     argument_as_string = "(" + argument_as_string + ")";
@@ -163,22 +212,28 @@ string function_call_to_string(Expression@ expression) {
     //return expression.identifier_name + "(" + join(arguments, ", ") + ")";
 }
 
-string expression_to_string(Expression@ expression) {
+string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
     if (expression is null) {
         return "<ERROR>";
     }
 
     switch (expression.type) {
         case EXPRESSION_OPERATOR: {
+            Operator_Definition@ operator_definition = find_operator_definition_by_expression_in_context(expression, frame);
+
+            if (operator_definition is null) {
+                return expression_to_string(expression.left_operand, frame) + " " + expression.operator_type + " " + expression_to_string(expression.right_operand, frame);
+            }
+
             string result = join(array<string> = {
-                expression_to_string(expression.left_operand),
-                operator_type_to_ui_string(expression.operator_type),
-                expression_to_string(expression.right_operand)
+                expression_to_string(expression.left_operand, frame),
+                colored_keyword(operator_definition.name),
+                expression_to_string(expression.right_operand, frame)
             }, " ");
 
-            if (expression.left_operand.type == EXPRESSION_OPERATOR || expression.right_operand.type == EXPRESSION_OPERATOR) {
+            //if (expression.left_operand.type == EXPRESSION_OPERATOR || expression.right_operand.type == EXPRESSION_OPERATOR) {
                 result = "(" + result + ")";
-            } 
+            //} 
 
             return result;
         }
@@ -188,7 +243,7 @@ string expression_to_string(Expression@ expression) {
                 colored_literal_type(expression.literal_type),
                 colored_identifier(expression.identifier_name),
                 "=",
-                expression_to_string(expression.value_expression)
+                expression_to_string(expression.value_expression, frame)
             }, " ");
         }
             
@@ -197,15 +252,15 @@ string expression_to_string(Expression@ expression) {
                 colored_keyword("Set"),
                 colored_identifier(expression.identifier_name),
                 "=",
-                expression_to_string(expression.value_expression)
+                expression_to_string(expression.value_expression, frame)
             }, " ");
         case EXPRESSION_IDENTIFIER: return colored_identifier(expression.identifier_name);
         case EXPRESSION_LITERAL: return literal_to_ui_string(expression);
-        case EXPRESSION_CALL: return function_call_to_string(expression);
+        case EXPRESSION_CALL: return function_call_to_string(expression, frame);
         case EXPRESSION_REPEAT: {
             return join(array<string> = {
                 colored_keyword("Repeat"),
-                expression_to_string(expression.value_expression),
+                expression_to_string(expression.value_expression, frame),
                 "times"
             }, " ");
         }
@@ -213,12 +268,12 @@ string expression_to_string(Expression@ expression) {
         case EXPRESSION_WHILE: {
             return join(array<string> = {
                 colored_keyword("While"),
-                expression_to_string(expression.value_expression),
+                expression_to_string(expression.value_expression, frame),
                 "is " + literal_color + "true" + default_color + ", do"
             }, " ");
         }
 
-        case EXPRESSION_IF: return colored_keyword("If ") + expression_to_string(expression.value_expression);
+        case EXPRESSION_IF: return colored_keyword("If ") + expression_to_string(expression.value_expression, frame);
     }
 
     return "not_implemented (" + expression.type + ")";
@@ -321,6 +376,12 @@ void fill_function_call_expression_from_function_definition(Expression@ expressi
     }
 }
 
+void fill_operator_expression_from_operator_definition(Expression@ expression, Operator_Definition@ operator_definition) {
+    expression.operator_type = operator_definition.operator_type;
+    @expression.left_operand = make_empty_lit(operator_definition.left_operand_type);
+    @expression.right_operand = make_empty_lit(operator_definition.right_operand_type);
+}
+
 string get_function_name_for_list(Function_Definition@ function_definition) {
     string name = function_definition.pretty_name;
 
@@ -377,6 +438,20 @@ array<Function_Definition@> filter_function_definitions_by_return_type(Literal_T
 
         if (function_definition.return_type == limit_to) {
             filter_result.insertLast(function_definition);
+        }
+    }
+
+    return filter_result;
+}
+
+array<Operator_Group@> filter_operator_groups_by_return_type(Literal_Type limit_to) {
+    array<Operator_Group@> filter_result;
+
+    for (uint index = 0; index < state.operator_groups.length(); index++) {
+        Operator_Group@ operator_group = state.operator_groups[index];
+
+        if (operator_group.return_type == limit_to) {
+            filter_result.insertLast(operator_group);
         }
     }
 
