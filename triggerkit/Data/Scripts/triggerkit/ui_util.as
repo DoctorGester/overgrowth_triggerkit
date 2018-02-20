@@ -102,12 +102,13 @@ array<string>@ split_function_format_string_into_pieces(string format) {
     return result;
 }
 
-Literal_Type determine_expression_literal_type(Expression@ expression, Ui_Frame_State@ context) {
+// TODO this shouldn't be in ui_util.as
+Literal_Type determine_expression_literal_type(Expression@ expression, Variable_Scope@ variable_scope) {
     switch (expression.type) {
         case EXPRESSION_LITERAL: return expression.literal_type;
         case EXPRESSION_IDENTIFIER: {
             array<Variable@> scope_variables;
-            collect_scope_variables(context.top_scope, scope_variables);
+            collect_scope_variables(variable_scope, scope_variables);
 
             for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
                 if (scope_variables[variable_index].name == expression.identifier_name) {
@@ -125,7 +126,7 @@ Literal_Type determine_expression_literal_type(Expression@ expression, Ui_Frame_
         }
 
         case EXPRESSION_OPERATOR: {
-            Operator_Definition@ definition = find_operator_definition_by_expression_in_context(expression, context);
+            Operator_Definition@ definition = find_operator_definition_by_expression_in_context(expression, variable_scope);
 
             return definition is null ? LITERAL_TYPE_VOID : definition.parent_group.return_type;
         }
@@ -148,13 +149,13 @@ Function_Definition@ find_function_definition_by_function_name(string function_n
     return null;
 }
 
-Operator_Definition@ find_operator_definition_by_expression_in_context(Expression@ expression, Ui_Frame_State@ context) {
+Operator_Definition@ find_operator_definition_by_expression_in_context(Expression@ expression, Variable_Scope@ variable_scope) {
     if (expression.left_operand is null || expression.right_operand is null) {
         return null;
     }
 
-    Literal_Type l_type = determine_expression_literal_type(expression.left_operand, context);
-    Literal_Type r_type = determine_expression_literal_type(expression.right_operand, context);
+    Literal_Type l_type = determine_expression_literal_type(expression.left_operand, variable_scope);
+    Literal_Type r_type = determine_expression_literal_type(expression.right_operand, variable_scope);
 
     return find_operator_definition_by_operator_type_and_operand_types(expression.operator_type, l_type, r_type);
 }
@@ -219,7 +220,7 @@ string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
 
     switch (expression.type) {
         case EXPRESSION_OPERATOR: {
-            Operator_Definition@ operator_definition = find_operator_definition_by_expression_in_context(expression, frame);
+            Operator_Definition@ operator_definition = find_operator_definition_by_expression_in_context(expression, frame.top_scope);
 
             if (operator_definition is null) {
                 return expression_to_string(expression.left_operand, frame) + " " + expression.operator_type + " " + expression_to_string(expression.right_operand, frame);

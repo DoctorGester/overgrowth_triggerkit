@@ -99,6 +99,14 @@ class Operator_Definition {
     Native_Function_Executor@ native_executor;
     Instruction_Type instruction_type;
     bool represented_as_a_native_executor;
+    bool invert_result;
+
+    bool opEquals(Operator_Definition@ compare_to) {
+        return
+            compare_to.left_operand_type == left_operand_type &&
+            compare_to.right_operand_type == right_operand_type &&
+            compare_to.operator_type == operator_type;
+    }
 }
 
 class Operator_Group {
@@ -113,6 +121,7 @@ class Operator_Group {
         @current_instance.parent_group = this;
         current_instance.name = name;
         current_instance.operator_type = operator_type;
+        current_instance.invert_result = false;
 
         operators.insertLast(current_instance);
 
@@ -141,6 +150,12 @@ class Operator_Group {
     Operator_Group@ as_singular_instruction(Instruction_Type instruction_type) {
         current_instance.instruction_type = instruction_type;
         current_instance.represented_as_a_native_executor = false;
+
+        return this;
+    }
+
+    Operator_Group@ invert_result() {
+        current_instance.invert_result = true;
 
         return this;
     }
@@ -360,11 +375,11 @@ Api_Builder@ build_api() {
 
             .operator("is more or equals to", OPERATOR_GE)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
-            // TODO instruction type
+            .as_singular_instruction(INSTRUCTION_TYPE_GE)
 
             .operator("is less or equals to", OPERATOR_LE)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
-            // TODO instruction type
+            .as_singular_instruction(INSTRUCTION_TYPE_LE)
     ;
 
     api
@@ -375,7 +390,8 @@ Api_Builder@ build_api() {
 
             .operator("is not", OPERATOR_NEQ)
             .with_both_operands_as(LITERAL_TYPE_STRING)
-            // TODO either a separate function or multiple instructions?
+            .as_native_executor(api::are_strings_equal)
+            .invert_result()
     ;
 
     api

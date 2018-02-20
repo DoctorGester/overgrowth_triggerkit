@@ -1,9 +1,4 @@
 // Operators todos:
-//  Implement operators in the compiler: think on how we could generalize the code of determine_expression_literal_type
-//      I guess we should be able to reduce an operator either to a singular instruction or a native function call,
-//      maybe create a general callback which allows you to emit instructions? Sounds dirty.
-//      A separate instruction/native_call/nothing would probably do? But then some operator handling (AND/OR) is in the general code
-//      and some are in the API? Weird. But we probably won't have other and/or operators there anyway.
 //  Operators in the statement popup when editing conditions, again think about code generalization with the expression editor
 //      maybe we even should use an expression editor here? Then you would be able to select a literal value,
 //      but we could also just remove the literal value part when calling from a block and leave the variable/operators
@@ -158,6 +153,28 @@ void print_compilation_debug_info(Translation_Context@ ctx) {
             }
         }
 
+        if (ctx.code[x].type == INSTRUCTION_TYPE_NATIVE_CALL) {
+            auto keys = ctx.native_function_indices.getKeys();
+
+            for (uint j = 0; j < keys.length(); j++) {
+                if (int(ctx.native_function_indices[keys[j]]) == ctx.code[x].int_arg) {
+                    comment = colored_keyword(" // call ") + keys[j];
+                    break;
+                }
+            }
+        }
+
+        if (ctx.code[x].type == INSTRUCTION_TYPE_CALL) {
+            auto keys = ctx.user_function_indices.getKeys();
+
+            for (uint j = 0; j < keys.length(); j++) {
+                if (int(ctx.user_function_indices[keys[j]]) == ctx.code[x].int_arg) {
+                    comment = colored_keyword(" // call ") + keys[j];
+                    break;
+                }
+            }
+        }
+
         Log(info, x + ": " + instruction_to_string(ctx.code[x]) + comment);
     }
 }
@@ -215,19 +232,7 @@ array<Operator_Definition@>@ collect_operator_definitions(array<Operator_Group@>
 void compile_everything() {
     auto time = GetPerformanceCounter();
 
-    Variable_Scope global_variables;
-
-    for (uint variable_index = 0; variable_index < state.global_variables.length(); variable_index++) {
-        Variable@ variable = state.global_variables[variable_index];
-        global_variables.local_variable_indices[variable.name] = variable_index;
-    }
-
-    Api_Builder@ api_builder = build_api();
-    
-    Translation_Context translation_context;
-    @translation_context.function_definitions = api_builder.functions;
-    @translation_context.operator_definitions = collect_operator_definitions(api_builder.operator_groups);
-    translation_context.global_variable_scope = global_variables;
+    Translation_Context@ translation_context = prepare_translation_context();
 
     compile_user_functions(translation_context);
 

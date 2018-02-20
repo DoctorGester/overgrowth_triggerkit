@@ -39,17 +39,11 @@ class Ui_Frame_State {
     uint popup_stack_level;
     uint line_counter;
 
-    Ui_Variable_Scope@ top_scope;
+    Variable_Scope@ top_scope;
 
     string unique_id(string id) {
         return "###" + id + (expression_index++);
     }
-}
-
-class Ui_Variable_Scope {
-    Ui_Variable_Scope@ parent_scope;
-
-    array<Variable>@ variables;
 }
 
 class Ui_Special_Action {
@@ -65,7 +59,7 @@ class Ui_Special_Action {
 }
 
 void push_ui_variable_scope(Ui_Frame_State@ frame) {
-    Ui_Variable_Scope new_scope;
+    Variable_Scope new_scope;
     @new_scope.parent_scope = frame.top_scope;
     @new_scope.variables = array<Variable>();
 
@@ -77,7 +71,12 @@ void pop_ui_variable_scope(Ui_Frame_State@ frame) {
     @frame.top_scope = frame.top_scope.parent_scope;
 }
 
-void collect_scope_variables(Ui_Variable_Scope@ from_scope, array<Variable@>@ target, Literal_Type limit_to = LITERAL_TYPE_VOID) {
+// TODO this is technically used in compiler, shouldn't be in ui.as
+void collect_scope_variables(Variable_Scope@ from_scope, array<Variable@>@ target, Literal_Type limit_to = LITERAL_TYPE_VOID) {
+    if (from_scope.variables is null && from_scope.parent_scope is null) {
+        Log(error, "GLOBAL SCOPE HAS NO VARS");
+    }
+
     // TODO Variable shadowing duplicates variables!
     for (uint variable_index = 0; variable_index < from_scope.variables.length(); variable_index++) {
         if (limit_to == LITERAL_TYPE_VOID || limit_to == from_scope.variables[variable_index].type) {
@@ -266,7 +265,7 @@ void draw_editor_popup_function_selector(Expression@ expression, Ui_Frame_State@
 
     bool fit_operator_to_a_selected_action = false;
 
-    Operator_Definition@ current_fitting_operator = find_operator_definition_by_expression_in_context(expression, frame);
+    Operator_Definition@ current_fitting_operator = find_operator_definition_by_expression_in_context(expression, frame.top_scope);
 
     for (uint group_index = 0; group_index < operator_groups.length(); group_index++) {
         Operator_Group@ group = operator_groups[group_index];
@@ -657,7 +656,7 @@ void draw_function_call_as_broken_into_pieces(Expression@ expression, Ui_Frame_S
 }
 
 void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@ frame) {
-    Operator_Definition@ fitting_operator = find_operator_definition_by_expression_in_context(expression, frame);
+    Operator_Definition@ fitting_operator = find_operator_definition_by_expression_in_context(expression, frame.top_scope);
     Operator_Group@ operator_group = fitting_operator.parent_group;
 
     array<string> operator_names;
@@ -866,7 +865,8 @@ void draw_trigger_content(Trigger@ current_trigger) {
     }
 
     Ui_Frame_State frame;
-    Ui_Variable_Scope global_scope;
+
+    Variable_Scope global_scope;
     @global_scope.variables = state.global_variables;
     @frame.top_scope = global_scope;
 

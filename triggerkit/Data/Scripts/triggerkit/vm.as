@@ -26,8 +26,11 @@ enum Instruction_Type {
     INSTRUCTION_TYPE_EQ_ZERO,
     INSTRUCTION_TYPE_EQ_NOT_ZERO,
     INSTRUCTION_TYPE_EQ,
+    INSTRUCTION_TYPE_NEQ,
     INSTRUCTION_TYPE_LT,
     INSTRUCTION_TYPE_GT,
+    INSTRUCTION_TYPE_LE,
+    INSTRUCTION_TYPE_GE,
 
     INSTRUCTION_TYPE_POP,
 
@@ -292,6 +295,13 @@ namespace instructions {
         thread_stack_push_number(thread, bool_to_number(left == right));
     }
 
+    void neq(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
+
+        thread_stack_push_number(thread, bool_to_number(left != right));
+    }
+
     void lt(Thread@ thread, Instruction@ instruction) {
         float left = thread_stack_pop(thread).number_value;
         float right = thread_stack_pop(thread).number_value;
@@ -304,6 +314,20 @@ namespace instructions {
         float right = thread_stack_pop(thread).number_value;
 
         thread_stack_push_number(thread, bool_to_number(right > left));
+    }
+
+    void le(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
+
+        thread_stack_push_number(thread, bool_to_number(right <= left));
+    }
+
+    void ge(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
+
+        thread_stack_push_number(thread, bool_to_number(right >= left));
     }
 
     void load(Thread@ thread, Instruction@ instruction) {
@@ -386,11 +410,25 @@ namespace instructions {
         thread_stack_push_number(thread, left + right);
     }
 
+    void mul(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
+
+        thread_stack_push_number(thread, left * right);
+    }
+
     void sub(Thread@ thread, Instruction@ instruction) {
         float left = thread_stack_pop(thread).number_value;
         float right = thread_stack_pop(thread).number_value;
 
         thread_stack_push_number(thread, right - left);
+    }
+
+    void div(Thread@ thread, Instruction@ instruction) {
+        float left = thread_stack_pop(thread).number_value;
+        float right = thread_stack_pop(thread).number_value;
+
+        thread_stack_push_number(thread, right / left);
     }
 
     void native_call(Thread@ thread, Instruction@ instruction) {
@@ -438,9 +476,9 @@ void set_up_instruction_executors_temp() {
     instruction_executors.resize(INSTRUCTION_TYPE_LAST);
 
     @instruction_executors[INSTRUCTION_TYPE_ADD] = instructions::add;
-    //@instruction_executors[INSTRUCTION_TYPE_MUL] = instructions::i_INSTRUCTION_TYPE_MUL;
+    @instruction_executors[INSTRUCTION_TYPE_MUL] = instructions::mul;
     @instruction_executors[INSTRUCTION_TYPE_SUB] = instructions::sub;
-    //@instruction_executors[INSTRUCTION_TYPE_DIV] = instructions::i_INSTRUCTION_TYPE_DIV;
+    @instruction_executors[INSTRUCTION_TYPE_DIV] = instructions::div;
 
     @instruction_executors[INSTRUCTION_TYPE_DUP] = instructions::dup;
     @instruction_executors[INSTRUCTION_TYPE_INC] = instructions::inc;
@@ -464,8 +502,12 @@ void set_up_instruction_executors_temp() {
     @instruction_executors[INSTRUCTION_TYPE_EQ_ZERO] = instructions::eq_zero;
     @instruction_executors[INSTRUCTION_TYPE_EQ_NOT_ZERO] = instructions::eq_not_zero;
     @instruction_executors[INSTRUCTION_TYPE_EQ] = instructions::eq;
+    @instruction_executors[INSTRUCTION_TYPE_NEQ] = instructions::neq;
+
     @instruction_executors[INSTRUCTION_TYPE_LT] = instructions::lt;
     @instruction_executors[INSTRUCTION_TYPE_GT] = instructions::gt;
+    @instruction_executors[INSTRUCTION_TYPE_LE] = instructions::le;
+    @instruction_executors[INSTRUCTION_TYPE_GE] = instructions::ge;
 
     @instruction_executors[INSTRUCTION_TYPE_POP] = instructions::pop;
 

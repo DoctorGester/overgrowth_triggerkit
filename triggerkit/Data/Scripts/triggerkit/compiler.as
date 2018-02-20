@@ -100,7 +100,41 @@ class Function_Translation_Unit {
 class Variable_Scope {
     Variable_Scope@ parent_scope;
 
+    // TODO pretty dirty, we don't really need both indicies and variables here
+    array<Variable>@ variables;
     dictionary local_variable_indices;
+}
+
+Translation_Context@ prepare_translation_context() {
+    Variable_Scope global_variables;
+
+    for (uint variable_index = 0; variable_index < state.global_variables.length(); variable_index++) {
+        Variable@ variable = state.global_variables[variable_index];
+        global_variables.local_variable_indices[variable.name] = variable_index;
+    }
+
+    @global_variables.variables = state.global_variables;
+
+    Api_Builder@ api_builder = build_api();
+    
+    Translation_Context translation_context;
+    @translation_context.function_definitions = api_builder.functions;
+    @translation_context.operator_definitions = collect_operator_definitions(api_builder.operator_groups);
+    translation_context.global_variable_scope = global_variables;
+    
+    // TODO this reserves space for operators, not only it's a little inefficient since
+    //      not all operators operate as native functions, this is extremely DIRTY
+    translation_context.function_executors.resize(translation_context.operator_definitions.length());
+
+    for (uint operator_index = 0; operator_index < translation_context.operator_definitions.length(); operator_index++) {
+        Operator_Definition@ operator_definition = translation_context.operator_definitions[operator_index];
+
+        if (operator_definition.represented_as_a_native_executor) {
+            @translation_context.function_executors[operator_index] = operator_definition.native_executor;
+        }
+    }
+
+    return translation_context;
 }
 
 Memory_Cell@ make_memory_cell(float number_value) {
@@ -141,6 +175,7 @@ void push_variable_scope(Translation_Context@ ctx) {
 
     Variable_Scope new_scope;
     @new_scope.parent_scope = translation_unit.variable_scope;
+    @new_scope.variables = array<Variable>();
 
     if (translation_unit.variable_scope is null) {
         @new_scope.parent_scope = ctx.global_variable_scope;
@@ -239,16 +274,6 @@ uint declare_local_variable_and_advance(Translation_Context@ ctx, string name) {
     return new_index;
 }
 
-Operator_Definition@ find_operator_definition(Translation_Context@ ctx, string name) {
-    for (uint operator_index = 0; operator_index < ctx.operator_definitions.length(); operator_index++) {
-        if (ctx.operator_definitions[operator_index].name == name) {
-            return ctx.operator_definitions[operator_index];
-        }
-    }
-
-    return null;
-}
-
 void emit_instruction(Instruction@ instruction, array<Instruction>@ target) {
     target.insertLast(instruction);
 }
@@ -307,19 +332,6 @@ uint find_variable_location(Translation_Context@ ctx, string name, bool& reached
     return uint(variable_location);
 }
 
-Instruction_Type operator_type_to_instruction_type(Operator_Type operator_type) {
-    switch (operator_type) {
-        case OPERATOR_EQ: return INSTRUCTION_TYPE_EQ;
-        case OPERATOR_GT: return INSTRUCTION_TYPE_GT;
-        case OPERATOR_LT: return INSTRUCTION_TYPE_LT;
-        case OPERATOR_ADD: return INSTRUCTION_TYPE_ADD;
-        case OPERATOR_SUB: return INSTRUCTION_TYPE_SUB;
-    }
-
-    Log(error, "Unhandled operator type " + operator_type);
-    return INSTRUCTION_TYPE_ADD;
-}
-
 uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_definition, array<Expression@>@ expressions) {
     uint function_location = ctx.code.length();
 
@@ -330,6 +342,9 @@ uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_
     if (function_definition !is null) {
         for (uint argument_index = 0; argument_index < function_definition.argument_names.length(); argument_index++) {
             declare_local_variable_and_advance(ctx, function_definition.argument_names[argument_index]);
+
+            Variable@ variable = make_variable(function_definition.argument_types[argument_index], function_definition.argument_names[argument_index]);
+            get_current_function_translation_unit(ctx).variable_scope.variables.insertLast(variable);
         }
     }
 
@@ -418,6 +433,9 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             emit_expression_bytecode(ctx, expression.value_expression); // TODO make this optional?
             emit_instruction(make_store_instruction(slot), target);
 
+            Variable@ variable = make_variable(expression.literal_type, expression.identifier_name);
+            get_current_function_translation_unit(ctx).variable_scope.variables.insertLast(variable);
+
             break;
         }
 
@@ -437,8 +455,6 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         }
 
         case EXPRESSION_OPERATOR: {
-            //Operator_Definition@ operator_definition = find_operator_definition(ctx, expression.identifier_name);
-
             switch (expression.operator_type) {
                 case OPERATOR_OR: {
                     emit_expression_bytecode(ctx, expression.left_operand);
@@ -481,9 +497,36 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                 }
 
                 default: {
+                    Variable_Scope@ current_scope = get_current_function_translation_unit(ctx).variable_scope;
+                    // TODO this uses state.operator_groups instead of ctx.operator_definitions, bad!
+                    Operator_Definition@ operator_definition = find_operator_definition_by_expression_in_context(expression, current_scope);
+
+                    if (operator_definition is null) {
+                        Log(error, "Fatal error: operator definition not found for expression");
+                        return;
+                    }
+
                     emit_expression_bytecode(ctx, expression.left_operand);
                     emit_expression_bytecode(ctx, expression.right_operand);
-                    emit_instruction(make_instruction(operator_type_to_instruction_type(expression.operator_type)), target);
+
+                    if (operator_definition.represented_as_a_native_executor) {
+                        // TODO this is TERRIBLE, but findByRef doesn't work for some reason even though we didn't copy anything?
+                        //      if we get rid of this, we can also get rid of opEquals in Operator_Definition
+                        int operator_index = ctx.operator_definitions.find(operator_definition);
+
+                        if (operator_index == -1) {
+                            Log(error, "Fatal error: operator " + operator_definition.name + " not found");
+                            return;
+                        }
+
+                        emit_instruction(make_native_call_instruction(uint(operator_index)), target);
+                    } else {
+                        emit_instruction(make_instruction(operator_definition.instruction_type), target);
+                    }
+
+                    if (operator_definition.invert_result) {
+                        emit_instruction(make_instruction(INSTRUCTION_TYPE_NOT), target);
+                    }
                 }
             }
 
