@@ -136,46 +136,55 @@ array<Expression@>@ make_test_expression_array() {
 void print_compilation_debug_info(Translation_Context@ ctx) {
     array<string>@ function_names = ctx.user_function_indices.getKeys();
     for (uint x = 0; x < ctx.code.length(); x++) {
-        string comment = "";
+        string text = instruction_to_string(ctx.code[x]);
+
         for (uint i = 0; i < function_names.length(); i++) {
             string name = function_names[i];
             uint location = uint(ctx.constants[uint(ctx.user_function_indices[name])].number_value);
 
             if (location == x) {
-                comment = colored_keyword(" // function ") + name;
+                Log(info, colored_keyword("// function ") + name);
                 break;
             }
         }
 
         for (uint i = 0; i < state.triggers.length(); i++) {
             if (state.triggers[i].function_entry_pointer == x) {
-                comment = colored_keyword(" // trigger ") + state.triggers[i].name;
+                Log(info, colored_keyword("// trigger ") + state.triggers[i].name);
             }
         }
 
         if (ctx.code[x].type == INSTRUCTION_TYPE_NATIVE_CALL) {
             auto keys = ctx.native_function_indices.getKeys();
+            uint function_id = uint(ctx.code[x].int_arg);
+            string suffix_text = " (" + colored_literal(function_id + "") + ")";
 
             for (uint j = 0; j < keys.length(); j++) {
-                if (int(ctx.native_function_indices[keys[j]]) == ctx.code[x].int_arg) {
-                    comment = colored_keyword(" // call ") + keys[j];
+                if (uint(ctx.native_function_indices[keys[j]]) == function_id) {
+                    text = colored_keyword("call ") + keys[j] + suffix_text;
                     break;
                 }
+            }
+
+            if (function_id < ctx.operator_definitions.length()) {
+                text = colored_keyword(ctx.operator_definitions[function_id].name) + suffix_text;
             }
         }
 
         if (ctx.code[x].type == INSTRUCTION_TYPE_CALL) {
             auto keys = ctx.user_function_indices.getKeys();
+            uint function_id = uint(ctx.code[x].int_arg);
+            string suffix_text = " (" + colored_literal(function_id + "") + ")";
 
             for (uint j = 0; j < keys.length(); j++) {
-                if (int(ctx.user_function_indices[keys[j]]) == ctx.code[x].int_arg) {
-                    comment = colored_keyword(" // call ") + keys[j];
+                if (uint(ctx.user_function_indices[keys[j]]) == function_id) {
+                    text = colored_keyword("call ") + keys[j] + suffix_text;
                     break;
                 }
             }
         }
 
-        Log(info, x + ": " + instruction_to_string(ctx.code[x]) + comment);
+        Log(info, x + ": " + text);
     }
 }
 

@@ -139,8 +139,8 @@ Thread@ make_thread(Virtual_Machine@ vm) {
     return thread;
 }
 
-string instruction_to_string(Instruction@ instruction) {
-    switch (instruction.type) {
+string instruction_type_to_string(Instruction_Type instruction_type) {
+    switch (instruction_type) {
         case INSTRUCTION_TYPE_ADD: return "ADD";
         case INSTRUCTION_TYPE_SUB: return "SUB";
 
@@ -148,13 +148,13 @@ string instruction_to_string(Instruction@ instruction) {
         case INSTRUCTION_TYPE_CONST_1: return "CONST 1";
         case INSTRUCTION_TYPE_POP: return "POP";
 
-        case INSTRUCTION_TYPE_LOAD_CONST: return "LOAD CONST " + instruction.int_arg;
+        case INSTRUCTION_TYPE_LOAD_CONST: return "LOAD CONST";
 
-        case INSTRUCTION_TYPE_LOAD: return "LOAD " + instruction.int_arg;
-        case INSTRUCTION_TYPE_STORE: return "STORE " + instruction.int_arg;
+        case INSTRUCTION_TYPE_LOAD: return "LOAD";
+        case INSTRUCTION_TYPE_STORE: return "STORE";
 
-        case INSTRUCTION_TYPE_GLOBAL_LOAD: return "GLOBAL LOAD " + instruction.int_arg;
-        case INSTRUCTION_TYPE_GLOBAL_STORE: return "GLOBAL STORE " + instruction.int_arg;
+        case INSTRUCTION_TYPE_GLOBAL_LOAD: return "GLOBAL LOAD";
+        case INSTRUCTION_TYPE_GLOBAL_STORE: return "GLOBAL STORE";
 
         case INSTRUCTION_TYPE_EQ: return "EQ";
         case INSTRUCTION_TYPE_EQ_ZERO: return "EQ ZERO";
@@ -166,17 +166,38 @@ string instruction_to_string(Instruction@ instruction) {
         case INSTRUCTION_TYPE_INC: return "INC";
         case INSTRUCTION_TYPE_DEC: return "DEC";
 
-        case INSTRUCTION_TYPE_JMP: return "JMP " + instruction.int_arg;
-        case INSTRUCTION_TYPE_JMP_IF: return "JMP_IF " + instruction.int_arg;
-        case INSTRUCTION_TYPE_NATIVE_CALL: return "NATIVE CALL " + instruction.int_arg;
-        case INSTRUCTION_TYPE_CALL: return "CALL " + instruction.int_arg;
+        case INSTRUCTION_TYPE_JMP: return "JMP";
+        case INSTRUCTION_TYPE_JMP_IF: return "JMP_IF";
+        case INSTRUCTION_TYPE_NATIVE_CALL: return "NATIVE CALL";
+        case INSTRUCTION_TYPE_CALL: return "CALL";
         case INSTRUCTION_TYPE_RET: return "RET";
         case INSTRUCTION_TYPE_RETURN: return "RETURN";
 
-        case INSTRUCTION_TYPE_RESERVE: return "RESERVE " + instruction.int_arg;
+        case INSTRUCTION_TYPE_RESERVE: return "RESERVE";
     }
 
-    return instruction.type + "";
+    return instruction_type + "";
+}
+
+string instruction_to_string(Instruction@ instruction) {
+    string type_as_string = colored_identifier(instruction_type_to_string(instruction.type));
+    string arg_as_string = colored_literal(instruction.int_arg + "");
+
+    switch (instruction.type) {
+        case INSTRUCTION_TYPE_LOAD_CONST:
+        case INSTRUCTION_TYPE_LOAD:
+        case INSTRUCTION_TYPE_STORE:
+        case INSTRUCTION_TYPE_GLOBAL_LOAD:
+        case INSTRUCTION_TYPE_GLOBAL_STORE:
+        case INSTRUCTION_TYPE_JMP:
+        case INSTRUCTION_TYPE_JMP_IF:
+        case INSTRUCTION_TYPE_NATIVE_CALL:
+        case INSTRUCTION_TYPE_CALL:
+        case INSTRUCTION_TYPE_RESERVE:
+             return type_as_string + " " + arg_as_string;
+    }
+
+    return type_as_string;
 }
 
 int get_relative_code_location(uint to, array<Instruction>@ target) {

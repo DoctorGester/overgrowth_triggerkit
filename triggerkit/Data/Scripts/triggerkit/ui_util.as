@@ -47,12 +47,16 @@ string colored_identifier(string identifier_name) {
     return identifier_color + identifier_name + default_color;
 }
 
+string colored_literal(string value) {
+    return literal_color + value + default_color;
+}
+
 string literal_to_ui_string(Expression@ literal) {
     switch (literal.literal_type) {
 
-        case LITERAL_TYPE_NUMBER: return literal_color + literal.literal_value.number_value + default_color;
+        case LITERAL_TYPE_NUMBER: return colored_literal(literal.literal_value.number_value + "");
         case LITERAL_TYPE_STRING: return string_color + "\"" + literal.literal_value.string_value + "\"" + default_color;
-        case LITERAL_TYPE_BOOL: return literal_color + (number_to_bool(literal.literal_value.number_value) ? "True" : "False") + default_color;
+        case LITERAL_TYPE_BOOL: return colored_literal(number_to_bool(literal.literal_value.number_value) ? "True" : "False");
 
         default: {
             Log(error, "Unsupported literal type " + literal_type_to_ui_string(literal.literal_type));
