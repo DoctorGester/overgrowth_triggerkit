@@ -84,7 +84,7 @@ void parse_variables(Parser_State@ state, array<Variable>@ variables) {
 
         Literal_Type literal_type = serializeable_string_to_literal_type(first_word);
         string identifier_name = parser_next_word(state);
-        Memory_Cell@ value = parse_literal_value_from_string(literal_type, parser_next_word(state)).literal_value;
+        Memory_Cell@ value = parse_literal_value_from_string(literal_type, state).literal_value;
 
         // TODO make_variable
         Variable variable;
@@ -170,7 +170,7 @@ string literal_type_to_serializeable_string(Literal_Type literal_type) {
         case LITERAL_TYPE_ITEM: return "Item";
         case LITERAL_TYPE_HOTSPOT: return "Hotspot";
         case LITERAL_TYPE_CHARACTER: return "Character";
-        case LITERAL_TYPE_VECTOR: return "Vector";
+        case LITERAL_TYPE_VECTOR_3: return "Vector3";
         case LITERAL_TYPE_FUNCTION: return "Function";
         case LITERAL_TYPE_ARRAY: return "Array";
     }
@@ -183,6 +183,7 @@ string literal_to_serializeable_string(Literal_Type literal_type, Memory_Cell@ l
         case LITERAL_TYPE_NUMBER: return literal_value.number_value + "";
         case LITERAL_TYPE_STRING: return serializeable_string(literal_value.string_value);
         case LITERAL_TYPE_BOOL: return number_to_bool(literal_value.number_value) ? "True" : "False";
+        case LITERAL_TYPE_VECTOR_3: return literal_value.vec3_value.x + " " + literal_value.vec3_value.y + " " + literal_value.vec3_value.z;
 
         default: {
             Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal_type));

@@ -580,7 +580,9 @@ namespace api {
         string left = ctx.take_string();
         string right = ctx.take_string();
 
-        ctx.return_string(left + right);
+        // Operator order
+        // TODO we could probably change that
+        ctx.return_string(right + left);
     }
 
     void are_strings_equal(Native_Call_Context@ ctx) {

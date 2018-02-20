@@ -39,6 +39,8 @@ class Ui_Frame_State {
     uint popup_stack_level;
     uint line_counter;
 
+    bool drawing_conditions_block;
+
     Variable_Scope@ top_scope;
 
     string unique_id(string id) {
@@ -429,7 +431,7 @@ bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Varia
     return changed;
 }
 
-void draw_expression_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
+void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_editor, Literal_Type limit_to) {
     Expression@ expression = state.edited_expressions[frame.popup_stack_level - 1];
 
     const int offset = 200;
@@ -477,17 +479,19 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) 
         ImGui_NewLine();
     }
 
-    if (ImGui_RadioButton("Value", expression.type == EXPRESSION_LITERAL)) {
-        expression.type = EXPRESSION_LITERAL;
-        expression.literal_type = limit_to;
-    }
+    if (draw_literal_editor) {
+        if (ImGui_RadioButton("Value", expression.type == EXPRESSION_LITERAL)) {
+            expression.type = EXPRESSION_LITERAL;
+            expression.literal_type = limit_to;
+        }
 
-    ImGui_SameLine();
-    ImGui_SetCursorPosX(offset);
+        ImGui_SameLine();
+        ImGui_SetCursorPosX(offset);
 
-    if (draw_editable_literal(expression.literal_type, expression.literal_value, frame.unique_id("editable_literal"))) {
-        expression.type = EXPRESSION_LITERAL;
-        expression.literal_type = limit_to;
+        if (draw_editable_literal(expression.literal_type, expression.literal_value, frame.unique_id("editable_literal"))) {
+            expression.type = EXPRESSION_LITERAL;
+            expression.literal_type = limit_to;
+        }
     }
     
     draw_editor_popup_footer(frame);
@@ -504,10 +508,11 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
     if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
         frame.popup_stack_level++;
 
-        if (parent_is_a_code_block) {
+        if (parent_is_a_code_block && !frame.drawing_conditions_block) {
             draw_statement_editor_popup(frame, limit_to);
         } else {
-            draw_expression_editor_popup(frame, limit_to);
+            bool hide_literal_editor = frame.drawing_conditions_block && parent_is_a_code_block;
+            draw_expression_editor_popup(frame, !hide_literal_editor, limit_to);
         }
 
         ImGui_EndPopup();
@@ -557,10 +562,8 @@ bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
         case LITERAL_TYPE_CHARACTER:
             ImGui_Text("Character input here");
             break;
-        case LITERAL_TYPE_VECTOR:
-            // ImGui_InputFloat3("###LiteralVector" + index, statement.valueVector, 2);
-            ImGui_Text("Not implemented");
-            break;
+        case LITERAL_TYPE_VECTOR_3:
+            return ImGui_InputFloat3(unique_id, literal_value.vec3_value, 2);
         case LITERAL_TYPE_ARRAY:
             ImGui_Text("Array input here");
             break;
@@ -893,7 +896,10 @@ void draw_trigger_content(Trigger@ current_trigger) {
         frame.top_scope.variables.insertLast(variable);
     }
 
+    frame.drawing_conditions_block = true;
     draw_expressions_in_a_tree_node("Conditions", current_trigger.conditions, frame, limit_to: LITERAL_TYPE_BOOL);
+
+    frame.drawing_conditions_block = false;
     draw_expressions_in_a_tree_node("Actions", current_trigger.actions, frame);
 
     pop_ui_variable_scope(frame);

@@ -1,12 +1,12 @@
 // Operators todos:
-//  Operators in the statement popup when editing conditions, again think about code generalization with the expression editor
-//      maybe we even should use an expression editor here? Then you would be able to select a literal value,
-//      but we could also just remove the literal value part when calling from a block and leave the variable/operators
 //  Work on parenthesis elimination. Long chains of additions shouldn't have parenthesis at all.
 //      This is easy to handle, not sure if we can devise a more general solution though.
+// A big point of failure is:
+//  if we delete a variable/user function which is used in an operator we won't be able to infer a type
+//  from it and will fail to determine the operator. This can be prevented by somehow caching the expression type in
+//  the expression itself and falling back to that type if we failed to determine one.
 
 // More dialogue functions
-// Operator support in UI
 // Exclude certain functions (like boolean comparisons) from the list of available actions
 // Undo/Redo/Cancel. The way to do it: just keep a buffer of serialized code versions and have a push_trigger_state function called at certain times
 // Serialization format versioning
@@ -373,11 +373,7 @@ void DrawGUI() {
                 ImGui_Text("Is Paused: " + thread.is_paused);
 
                 if (ImGui_Button("Step forward")) {
-                    set_up_instruction_executors_temp();
-
                     thread_step_forward(thread);
-
-                    clean_up_instruction_executors_temp();
                 }
 
                 ImGui_ListBoxHeader("Code");
@@ -500,6 +496,15 @@ Expression@ make_lit(bool v) {
     expression.type = EXPRESSION_LITERAL;
     expression.literal_type = LITERAL_TYPE_BOOL;
     expression.literal_value.number_value = bool_to_number(v);
+
+    return expression;
+}
+
+Expression@ make_lit(vec3 v) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = LITERAL_TYPE_VECTOR_3;
+    expression.literal_value.vec3_value = v;
 
     return expression;
 }

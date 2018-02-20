@@ -134,11 +134,18 @@ array<string> split_into_words_and_quoted_pieces(string text) {
     return result;
 }
 
-Expression@ parse_literal_value_from_string(Literal_Type literal_type, string value_as_string) {
+Expression@ parse_literal_value_from_string(Literal_Type literal_type, Parser_State@ state) {
     switch (literal_type) {
-        case LITERAL_TYPE_NUMBER: return make_lit(parseFloat(value_as_string));
-        case LITERAL_TYPE_STRING: return make_lit(value_as_string);
-        case LITERAL_TYPE_BOOL: return make_lit("True" == value_as_string);
+        case LITERAL_TYPE_NUMBER: return make_lit(parseFloat(parser_next_word(state)));
+        case LITERAL_TYPE_STRING: return make_lit(parser_next_word(state));
+        case LITERAL_TYPE_BOOL: return make_lit("True" == parser_next_word(state));
+        case LITERAL_TYPE_VECTOR_3: {
+            float x = parseFloat(parser_next_word(state));
+            float y = parseFloat(parser_next_word(state));
+            float z = parseFloat(parser_next_word(state));
+
+            return make_lit(vec3(x, y, z));
+        }
 
         default: {
             Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal_type));
@@ -161,7 +168,7 @@ Expression@ parse_words_into_expression(Parser_State@ state) {
     } else if (word == KEYWORD_LITERAL) {
         Literal_Type literal_type = serializeable_string_to_literal_type(parser_next_word(state));
 
-        return parse_literal_value_from_string(literal_type, parser_next_word(state));
+        return parse_literal_value_from_string(literal_type, state);
     } else if (word == KEYWORD_IDENTIFIER) {
         string identifier_name = parser_next_word(state);
 

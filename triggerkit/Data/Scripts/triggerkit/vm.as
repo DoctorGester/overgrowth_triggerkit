@@ -63,6 +63,7 @@ class Virtual_Machine {
     array<Instruction> code;
     array<Native_Function_Executor@>@ function_executors;
     array<Memory_Cell>@ constant_pool;
+    array<Instruction_Executor@> instruction_executors;
 
     uint occupied_memory = 0;
 
@@ -73,8 +74,10 @@ class Virtual_Machine {
 class Memory_Cell {
     string string_value;
     float number_value;
+    vec3 vec3_value;
     array<string> string_array_value;
     array<float> number_array_value;
+    array<vec3> vec3_array_value; // TODO we probably don't actually need that and could just use the number_array_value
 }
 
 class Thread {
@@ -126,6 +129,7 @@ class Native_Call_Context {
 Virtual_Machine@ make_vm() {
     Virtual_Machine vm;
     vm.memory.resize(MEMORY_LIMIT_BYTES);
+    set_up_instruction_executors(vm);
 
     return vm;
 }
@@ -232,25 +236,25 @@ void thread_stack_push_string(Thread@ thread, string value) {
     thread.stack[thread.stack_top++].string_value = value;
 }
 
-// TODO doesn't support a lot of other stuff
 void thread_stack_push(Thread@ thread, Memory_Cell@ value) {
-    Memory_Cell@ cell = thread.stack[thread.stack_top++];
-    cell.number_value = value.number_value;
-    cell.string_value = value.string_value;
-    cell.number_array_value = value.number_array_value;
-    cell.string_array_value = value.string_array_value;
+    copy_memory(value, thread.stack[thread.stack_top++]);
 }
 
 void thread_stack_store(Thread@ thread, uint in_slot, Memory_Cell@ value) {
-    Memory_Cell@ cell = thread.stack[in_slot];
-    cell.number_value = value.number_value;
-    cell.string_value = value.string_value;
+    copy_memory(value, thread.stack[in_slot]);
 }
 
 void memory_store(Thread@ thread, uint in_slot, Memory_Cell@ value) {
-    Memory_Cell@ cell = thread.vm.memory[in_slot];
-    cell.number_value = value.number_value;
-    cell.string_value = value.string_value;
+    copy_memory(value, thread.vm.memory[in_slot]);
+}
+
+void copy_memory(Memory_Cell@ from, Memory_Cell@ to) {
+    to.number_value = from.number_value;
+    to.string_value = from.string_value;
+    to.vec3_value = from.vec3_value;
+    to.number_array_value = from.number_array_value;
+    to.string_array_value = from.string_array_value;
+    to.vec3_array_value = from.vec3_array_value;
 }
 
 float bool_to_number(bool bool_value) {
@@ -475,7 +479,7 @@ bool thread_step_forward(Thread@ thread) {
     uint previous_instruction_index = thread.current_instruction;
 
     Instruction@ current_instruction = @thread.vm.code[thread.current_instruction];
-    instruction_executors[current_instruction.type](thread, current_instruction);
+    thread.vm.instruction_executors[current_instruction.type](thread, current_instruction);
 
     // Log(info, instruction_to_string(current_instruction));
 
@@ -490,10 +494,9 @@ bool thread_step_forward(Thread@ thread) {
     return !thread.is_paused;
 }
 
-array<Instruction_Executor@> instruction_executors;
+void set_up_instruction_executors(Virtual_Machine@ vm) {
+    array<Instruction_Executor@>@ instruction_executors = vm.instruction_executors;
 
-// TODO should be called once!
-void set_up_instruction_executors_temp() {
     instruction_executors.resize(INSTRUCTION_TYPE_LAST);
 
     @instruction_executors[INSTRUCTION_TYPE_ADD] = instructions::add;
@@ -542,13 +545,7 @@ void set_up_instruction_executors_temp() {
     @instruction_executors[INSTRUCTION_TYPE_RESERVE] = instructions::reserve;
 }
 
-void clean_up_instruction_executors_temp() {
-    instruction_executors.resize(0);
-}
-
 void update_vm_state(Virtual_Machine@ virtual_machine) {
-    set_up_instruction_executors_temp();
-
     for (uint thread_index = 0; thread_index < virtual_machine.threads.length(); thread_index++) {
         Thread@ thread = virtual_machine.threads[thread_index];
 
@@ -577,6 +574,4 @@ void update_vm_state(Virtual_Machine@ virtual_machine) {
             }
         }
     }
-
-    clean_up_instruction_executors_temp();
 }

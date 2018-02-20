@@ -20,7 +20,7 @@ string literal_type_to_ui_string(Literal_Type literal_type) {
         case LITERAL_TYPE_ITEM: return "Item";
         case LITERAL_TYPE_HOTSPOT: return "Hotspot";
         case LITERAL_TYPE_CHARACTER: return "Character";
-        case LITERAL_TYPE_VECTOR: return "Vector";
+        case LITERAL_TYPE_VECTOR_3: return "Point";
         case LITERAL_TYPE_FUNCTION: return "Function";
         case LITERAL_TYPE_ARRAY: return "Array";
     }
@@ -52,11 +52,17 @@ string colored_literal(string value) {
 }
 
 string literal_to_ui_string(Expression@ literal) {
+    Memory_Cell@ value = literal.literal_value;
     switch (literal.literal_type) {
-
-        case LITERAL_TYPE_NUMBER: return colored_literal(literal.literal_value.number_value + "");
-        case LITERAL_TYPE_STRING: return string_color + "\"" + literal.literal_value.string_value + "\"" + default_color;
-        case LITERAL_TYPE_BOOL: return colored_literal(number_to_bool(literal.literal_value.number_value) ? "True" : "False");
+        case LITERAL_TYPE_NUMBER: return colored_literal(value.number_value + "");
+        case LITERAL_TYPE_STRING: return string_color + "\"" + value.string_value + "\"" + default_color;
+        case LITERAL_TYPE_BOOL: return colored_literal(number_to_bool(value.number_value) ? "True" : "False");
+        case LITERAL_TYPE_VECTOR_3:
+            return "Point(" + 
+                colored_literal(value.vec3_value.x + "") + ", " + 
+                colored_literal(value.vec3_value.y + "") + ", " + 
+                colored_literal(value.vec3_value.z + "") +
+            ")";
 
         default: {
             Log(error, "Unsupported literal type " + literal_type_to_ui_string(literal.literal_type));
@@ -237,7 +243,7 @@ string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
             }, " ");
 
             //if (expression.left_operand.type == EXPRESSION_OPERATOR || expression.right_operand.type == EXPRESSION_OPERATOR) {
-                result = "(" + result + ")";
+                //result = "(" + result + ")";
             //} 
 
             return result;
