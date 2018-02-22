@@ -113,6 +113,10 @@ class Native_Call_Context {
         return thread_stack_pop(this.thread).string_value;
     }
 
+    vec3 take_vec3() {
+        return thread_stack_pop(this.thread).vec3_value;
+    }
+
     void return_number(float value) {
         thread_stack_push_number(this.thread, value);
     }
@@ -123,6 +127,27 @@ class Native_Call_Context {
 
     void return_string(string value) {
         thread_stack_push_string(this.thread, value);
+    }
+
+    void fork_to(uint function_info_pointer) {
+        Thread@ fork = make_thread(vm);
+
+        uint function_pointer = uint(thread.vm.constant_pool[function_info_pointer].number_value);
+        uint number_of_arguments = uint(thread.vm.constant_pool[function_info_pointer + 1].number_value);
+
+        array<Memory_Cell> arguments_array_copy;
+
+        for (uint argument_index = 0; argument_index < number_of_arguments; argument_index++) {
+            arguments_array_copy.insertAt(0, thread_stack_pop(thread));
+        }
+
+        fork.current_instruction = function_pointer;
+
+        for (uint argument_index = 0; argument_index < number_of_arguments; argument_index++) {
+            thread_stack_store(fork, argument_index, arguments_array_copy[argument_index]);
+        }
+
+        thread.vm.threads.insertLast(fork);
     }
 }
 
@@ -210,8 +235,8 @@ int get_relative_code_location(uint to, array<Instruction>@ target) {
 
 Memory_Cell@ thread_stack_pop(Thread@ thread) {
     /*if (thread.stack_top == 0) {
-        PrintCallstack();
-        assert(false);
+        thread.has_finished_working = true;
+        return null;
     }*/
 
     Memory_Cell@ value = thread.stack[--thread.stack_top];
@@ -387,8 +412,6 @@ namespace instructions {
         // TODO ugh! Dirty implicit constant
         uint function_pointer = uint(thread.vm.constant_pool[instruction.int_arg].number_value);
         uint number_of_arguments = uint(thread.vm.constant_pool[instruction.int_arg + 1].number_value);
-
-        // Log(info, "CALL :: " + function_pointer + " :: " + number_of_arguments);
 
         array<Memory_Cell> arguments_array_copy;
 

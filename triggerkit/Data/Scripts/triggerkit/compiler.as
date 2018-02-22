@@ -9,6 +9,7 @@ enum Expression_Type {
     EXPRESSION_REPEAT,
     EXPRESSION_IF,
     EXPRESSION_RETURN,
+    EXPRESSION_FORK,
 
     EXPRESSION_CALL
 }
@@ -76,19 +77,28 @@ class Expression {
 }
 
 class Translation_Context {
+    array<Instruction> code;
+
     array<Function_Definition@>@ function_definitions;
     array<Operator_Definition@>@ operator_definitions;
+
+    array<Function_Definition@> function_definition_queue;
 
     dictionary native_function_indices;
     dictionary user_function_indices;
     array<Function_Translation_Unit> translation_stack;
     array<Native_Function_Executor@> function_executors;
+    array<Instruction_To_Backpatch> user_function_calls_to_backpatch;
     array<Memory_Cell> constants;
-    array<Instruction> code;
     Variable_Scope global_variable_scope;
 
     // Debug info
     uint expressions_translated = 0;
+}
+
+class Instruction_To_Backpatch {
+    uint instruction_address;
+    string function_name;
 }
 
 class Function_Translation_Unit {
@@ -120,6 +130,7 @@ Translation_Context@ prepare_translation_context() {
     Translation_Context translation_context;
     @translation_context.function_definitions = api_builder.functions;
     @translation_context.operator_definitions = collect_operator_definitions(api_builder.operator_groups);
+    translation_context.function_definition_queue = api_builder.functions; // Implicit copy
     translation_context.global_variable_scope = global_variables;
     
     // TODO this reserves space for operators, not only it's a little inefficient since
@@ -154,6 +165,13 @@ Memory_Cell@ make_memory_cell(bool bool_value) {
 Memory_Cell@ make_memory_cell(string string_value) {
     Memory_Cell cell;
     cell.string_value = string_value;
+
+    return cell;
+}
+
+Memory_Cell@ make_memory_cell(vec3 vec3_value) {
+    Memory_Cell cell;
+    cell.vec3_value = vec3_value;
 
     return cell;
 }
@@ -202,6 +220,8 @@ uint get_local_index_and_advance(Translation_Context@ ctx) {
     return get_current_function_translation_unit(ctx).local_variable_index++;
 }
 
+// TODO those 3 are the same functions, maybe we could use a little lambda predicate there and 
+//      generalize those into 1
 uint find_or_save_number_const(Translation_Context@ ctx, float value) {
     for (uint index = 0; index < ctx.constants.length(); index++) {
         if (ctx.constants[index].number_value == value) {
@@ -218,6 +238,19 @@ uint find_or_save_number_const(Translation_Context@ ctx, float value) {
 uint find_or_save_string_const(Translation_Context@ ctx, string value) {
     for (uint index = 0; index < ctx.constants.length(); index++) {
         if (ctx.constants[index].string_value == value) {
+            return index;
+        }
+    }
+
+    uint new_index = ctx.constants.length();
+    ctx.constants.insertLast(make_memory_cell(value));
+
+    return new_index;
+}
+
+uint find_or_save_vec3_const(Translation_Context@ ctx, vec3 value) {
+    for (uint index = 0; index < ctx.constants.length(); index++) {
+        if (ctx.constants[index].vec3_value == value) {
             return index;
         }
     }
@@ -253,14 +286,12 @@ uint find_or_declare_native_function_index(Translation_Context@ ctx, Function_De
     return new_index;
 }
 
-uint find_user_function_index(Translation_Context@ ctx, Function_Definition@ function_definition) {
-    string name = function_definition.function_name;
-
-    if (ctx.user_function_indices.exists(name)) {
-        return uint(ctx.user_function_indices[name]);
+uint find_user_function_index(Translation_Context@ ctx, string function_name) {
+    if (ctx.user_function_indices.exists(function_name)) {
+        return uint(ctx.user_function_indices[function_name]);
     }
 
-    Log(error, "Function index not found: " + function_definition.function_name);
+    Log(error, "Function index not found: " + function_name);
     assert(false);
 
     return 0;
@@ -272,6 +303,19 @@ uint declare_local_variable_and_advance(Translation_Context@ ctx, string name) {
     get_current_function_translation_unit(ctx).variable_scope.local_variable_indices[name] = new_index;
 
     return new_index;
+}
+
+void collect_local_variables(Variable_Scope@ from_scope, array<Variable@>@ target) {
+    if (from_scope.parent_scope !is null) {
+        collect_local_variables(from_scope.parent_scope, target);
+    } else {
+        // Skip root scope globals
+        return;
+    }
+
+    for (uint variable_index = 0; variable_index < from_scope.variables.length(); variable_index++) {
+        target.insertLast(from_scope.variables[variable_index]);
+    }
 }
 
 void emit_instruction(Instruction@ instruction, array<Instruction>@ target) {
@@ -333,23 +377,22 @@ uint find_variable_location(Translation_Context@ ctx, string name, bool& reached
 }
 
 uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_definition, array<Expression@>@ expressions) {
-    uint function_location = ctx.code.length();
+    array<Instruction>@ target = ctx.code;
+
+    uint function_location = target.length();
 
     push_function_translation_unit(ctx, function_definition);
     push_variable_scope(ctx);
 
-    // TODO dirty, function can be anonymous but still contain arguments!
-    if (function_definition !is null) {
-        for (uint argument_index = 0; argument_index < function_definition.argument_names.length(); argument_index++) {
-            declare_local_variable_and_advance(ctx, function_definition.argument_names[argument_index]);
+    for (uint argument_index = 0; argument_index < function_definition.argument_names.length(); argument_index++) {
+        declare_local_variable_and_advance(ctx, function_definition.argument_names[argument_index]);
 
-            Variable@ variable = make_variable(function_definition.argument_types[argument_index], function_definition.argument_names[argument_index]);
-            get_current_function_translation_unit(ctx).variable_scope.variables.insertLast(variable);
-        }
+        Variable@ variable = make_variable(function_definition.argument_types[argument_index], function_definition.argument_names[argument_index]);
+        get_current_function_translation_unit(ctx).variable_scope.variables.insertLast(variable);
     }
 
-    uint reserve_location = ctx.code.length();
-    emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE), ctx.code); 
+    uint reserve_location = target.length();
+    emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE), target); 
 
     for (uint block_expr_index = 0; block_expr_index < expressions.length(); block_expr_index++) {
         emit_expression_bytecode(ctx, expressions[block_expr_index], true);
@@ -359,10 +402,10 @@ uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_
     Function_Translation_Unit@ popped_unit = pop_function_translation_unit(ctx);
 
     uint function_reserved_space = popped_unit.local_variable_index;
-    emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE, -function_reserved_space), ctx.code); 
-    ctx.code[reserve_location].int_arg = function_reserved_space;
+    emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE, -function_reserved_space), target); 
+    target[reserve_location].int_arg = function_reserved_space;
 
-    emit_instruction(make_instruction(INSTRUCTION_TYPE_RET), ctx.code);
+    emit_instruction(make_instruction(INSTRUCTION_TYPE_RET), target);
 
     return function_location;
 }
@@ -404,6 +447,12 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                         emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
                     }
 
+                    break;
+                }
+
+                case LITERAL_TYPE_VECTOR_3: {
+                    uint const_id = find_or_save_vec3_const(ctx, expression.literal_value.vec3_value);
+                    emit_instruction(make_load_const_instruction(const_id), target);
                     break;
                 }
 
@@ -570,8 +619,6 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
                 emit_instruction(make_native_call_instruction(function_index), target);
             } else {
-                uint function_index = find_user_function_index(ctx, function_definition);
-
                 // Log(info, "Declared " + function_definition.function_name + " as " + function_index);
 
                 // TODO Is this the right way to reserve space for a return value?
@@ -583,7 +630,14 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                     emit_expression_bytecode(ctx, expression.arguments[argument_index]);
                 }
 
-                emit_instruction(make_user_call_instruction(function_index), target);
+                Instruction_To_Backpatch instruction_to_backpatch;
+                instruction_to_backpatch.instruction_address = target.length();
+                instruction_to_backpatch.function_name = function_definition.function_name;
+
+                ctx.user_function_calls_to_backpatch.insertLast(instruction_to_backpatch);
+
+                // Dummy value
+                emit_instruction(make_user_call_instruction(0), target);
             }
 
             if (is_parent_a_block && function_definition.return_type != LITERAL_TYPE_VOID) {
@@ -636,6 +690,57 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             break;
         }
 
+        case EXPRESSION_FORK: {
+            array<Variable@> local_variables;
+            collect_local_variables(get_current_function_translation_unit(ctx).variable_scope, local_variables);
+
+            Function_Definition function_definition;
+            function_definition.anonymous = true;
+            
+            @function_definition.user_code = expression.block_body;
+
+            for (uint variable_index = 0; variable_index < local_variables.length(); variable_index++) {
+                function_definition.argument_names.insertLast(local_variables[variable_index].name);
+                function_definition.argument_types.insertLast(local_variables[variable_index].type);
+
+                // TODO very inefficient, we could have returned a data structure which contained this data already
+                bool is_global = false;
+                uint slot = find_variable_location(ctx, local_variables[variable_index].name, is_global);
+
+                emit_instruction(make_load_instruction(slot), target);
+            }
+
+            //Anonymous_Function_Content anonymous_function;
+            //anonymous_function.call_site_address_holder_address = target.length();
+
+            // TODO should probably cache that
+            Function_Definition@ fork_definition = find_function_definition(ctx, "fork");
+            uint fork_index = find_or_declare_native_function_index(ctx, fork_definition);
+
+           /*for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
+                emit_expression_bytecode(ctx, expression.arguments[argument_index]);
+            }*/
+
+            function_definition.call_site = target.length();
+            ctx.function_definition_queue.insertLast(function_definition);
+
+            emit_instruction(make_load_const_instruction(0), target);
+            emit_instruction(make_native_call_instruction(fork_index), target);
+
+            //ctx.anonymous_functions.insertLast(anonymous_function);
+
+            /*emit_user_function(ctx, function_definition, expression.block_body);
+
+            Anonymous_Function_Content anonymous_function;
+            anonymous_function.call_site_address_holder_address = target.length();
+
+            emit_instruction(make_load_const_instruction(0), target);
+
+            ctx.anonymous_functions.insertLast(anonymous_function);*/
+
+            break;
+        }
+
         default: {
             Log(error, "Ignored expression of type :: " + expression.type);
             break;
@@ -644,14 +749,13 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 }
 
 void compile_user_functions(Translation_Context@ translation_context) {
-    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
-    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
-    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
-    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
-    // TODO First emit dummy user function calls, then backpatch them to enable calling not defined functions!
+    // Queue style
+    while (true) {
+        if (translation_context.function_definition_queue.length() == 0) {
+            break;
+        }
 
-    for (uint function_index = 0; function_index < translation_context.function_definitions.length(); function_index++) {
-        Function_Definition@ function = translation_context.function_definitions[function_index];
+        Function_Definition@ function = translation_context.function_definition_queue[0];
 
         if (!function.native) {
             uint function_location = emit_user_function(translation_context, function, function.user_code);
@@ -660,8 +764,25 @@ void compile_user_functions(Translation_Context@ translation_context) {
             // TODO Saving consts contigiously in memory, dirty! Possible solutions?
             translation_context.constants.insertLast(make_memory_cell(function.argument_types.length));
 
-            translation_context.user_function_indices[function.function_name] = const_id;
+            if (function.anonymous) {
+                // TODO that is just weird...
+                translation_context.code[function.call_site].int_arg = find_or_save_number_const(translation_context, const_id);
+            } else {
+                translation_context.user_function_indices[function.function_name] = const_id;
+            }
         }
+
+        translation_context.function_definition_queue.removeAt(0);
+    }
+}
+
+void backpatch_user_function_calls(Translation_Context@ translation_context) {
+    for (uint instruction_index = 0; instruction_index < translation_context.user_function_calls_to_backpatch.length(); instruction_index++) {
+        Instruction_To_Backpatch@ instruction_to_backpatch = translation_context.user_function_calls_to_backpatch[instruction_index];
+
+        uint function_index = find_user_function_index(translation_context, instruction_to_backpatch.function_name);
+        
+        translation_context.code[instruction_to_backpatch.instruction_address].int_arg = function_index;
     }
 }
 

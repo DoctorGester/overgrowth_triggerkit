@@ -284,6 +284,8 @@ string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
             }, " ");
         }
 
+        case EXPRESSION_FORK: return colored_keyword("Run in parallel");
+
         case EXPRESSION_IF: return colored_keyword("If ") + expression_to_string(expression.value_expression, frame);
     }
 

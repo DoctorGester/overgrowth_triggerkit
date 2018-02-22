@@ -48,6 +48,10 @@ class Function_Definition {
     array<Expression@>@ user_code = {};
     bool native = false;
 
+    // Used internally
+    uint call_site;
+    bool anonymous = false;
+
     Function_Definition(){}
 
     Function_Definition@ takes(Literal_Type argument_type) {
@@ -419,6 +423,11 @@ Api_Builder@ build_api() {
         .fmt("Do nothing");
 
     api
+        .func("fork", api::fork)
+        .list_name("Fork")
+        .fmt("Fork");
+
+    api
         .func("log1", api::log1)
         .list_name("Test function 1")
         .fmt("Log 1");
@@ -475,6 +484,12 @@ Api_Builder@ build_api() {
         .func("sleep", api::sleep)
         .category(CATEGORY_WAIT)
         .fmt("Sleep until the next update");
+
+    api
+        .func("set_camera_location", api::set_camera_location)
+        .fmt("Camera {} -> {}")
+        .takes(LITERAL_TYPE_VECTOR_3)
+        .takes(LITERAL_TYPE_VECTOR_3);
 
     api
         .func("are_strings_equal", api::are_strings_equal)
@@ -541,10 +556,15 @@ Api_Builder@ build_api() {
 
 namespace environment {
     bool is_in_dialogue_mode = false;
+    vec3 camera_position;
+    vec3 camera_look_at;
 
     void update() {
         if (is_in_dialogue_mode) {
             dialogue::update();
+
+            camera.SetPos(camera_position);
+            camera.LookAt(camera_look_at);
         }
     }
 
@@ -563,6 +583,10 @@ namespace environment {
 
 namespace api {
     void do_nothing(Native_Call_Context@ ctx){
+    }
+
+    void fork(Native_Call_Context@ ctx){
+        ctx.fork_to(uint(ctx.take_number()));
     }
 
     void nlt(Native_Call_Context@ ctx) {
@@ -646,6 +670,14 @@ namespace api {
         ctx.return_number(the_time);
     }
 
+    void set_camera_location(Native_Call_Context@ ctx) {
+        vec3 position = ctx.take_vec3();
+        vec3 look_at = ctx.take_vec3();
+
+        environment::camera_position = position;
+        environment::camera_look_at = look_at;
+    }
+
     array<Expression@>@ wait_until_dialogue_line_is_complete() {
         return array<Expression@> = {
             make_while(make_function_call("is_in_dialogue"), array<Expression@> = {
@@ -663,6 +695,14 @@ namespace api {
         return array<Expression@> = {
             target_time_declaration,
             make_while(condition, array<Expression@> = {
+                make_function_call("sleep")
+            })
+        };
+    }
+
+    array<Expression@> move_camera_to() {
+        return array<Expression@> = {
+            make_while(null, array<Expression@> = {
                 make_function_call("sleep")
             })
         };

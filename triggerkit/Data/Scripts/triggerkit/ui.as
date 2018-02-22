@@ -75,10 +75,6 @@ void pop_ui_variable_scope(Ui_Frame_State@ frame) {
 
 // TODO this is technically used in compiler, shouldn't be in ui.as
 void collect_scope_variables(Variable_Scope@ from_scope, array<Variable@>@ target, Literal_Type limit_to = LITERAL_TYPE_VOID) {
-    if (from_scope.variables is null && from_scope.parent_scope is null) {
-        Log(error, "GLOBAL SCOPE HAS NO VARS");
-    }
-
     // TODO Variable shadowing duplicates variables!
     for (uint variable_index = 0; variable_index < from_scope.variables.length(); variable_index++) {
         if (limit_to == LITERAL_TYPE_VOID || limit_to == from_scope.variables[variable_index].type) {
@@ -349,7 +345,8 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
             Ui_Special_Action("Declare Variable", EXPRESSION_DECLARATION),
             Ui_Special_Action("Assign Variable", EXPRESSION_ASSIGNMENT),
             Ui_Special_Action("If/Then/Else", EXPRESSION_IF),
-            Ui_Special_Action("While/Do", EXPRESSION_WHILE)
+            Ui_Special_Action("While/Do", EXPRESSION_WHILE),
+            Ui_Special_Action("Run in Parallel", EXPRESSION_FORK)
         };
 
         for (uint action_index = 0; action_index < special_actions.length(); action_index++) {
@@ -768,6 +765,8 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
             break;
         }
 
+        case EXPRESSION_FORK: break;
+
         default: {
             ImGui_Button("not_implemented##" + frame.unique_id("not_implemented"));
             break;
@@ -838,6 +837,7 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Li
                 break;
             }
 
+            case EXPRESSION_FORK:
             case EXPRESSION_WHILE:
             case EXPRESSION_REPEAT: {
                 draw_expressions_in_a_tree_node("Actions", expression.block_body, frame);

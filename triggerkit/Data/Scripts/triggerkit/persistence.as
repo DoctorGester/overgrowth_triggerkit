@@ -296,6 +296,13 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
             }, " ");
         }
 
+        case EXPRESSION_FORK: {
+            return real_indent + join(array<string> = {
+                KEYWORD_FORK,
+                serialize_expression_block(expression.block_body, indent)
+            }, " ");
+        }
+
         case EXPRESSION_IF: {
             return real_indent + join(array<string> = {
                 KEYWORD_IF,

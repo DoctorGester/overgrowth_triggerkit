@@ -5,6 +5,7 @@
 //  if we delete a variable/user function which is used in an operator we won't be able to infer a type
 //  from it and will fail to determine the operator. This can be prevented by somehow caching the expression type in
 //  the expression itself and falling back to that type if we failed to determine one.
+// Delete the redundant __xxx_comparison + __string_concatenation operators
 
 // More dialogue functions
 // Exclude certain functions (like boolean comparisons) from the list of available actions
@@ -13,13 +14,10 @@
 // Proper error reporting: compiler goes through the whole thing and gives a list of Compiler_Error which have direct links to Expression@ instances, 
 //                         highlight them and exclude related triggers from compilation
 // Properly resize globals window when opened and resize global list to the size of the window
-// Figure out what to do with stuff like string operators etc, we could totally make everything a function but then we lose an ability to easily analyze it
-// Fix variable scoping in the UI, you can access already defined variables
 // Fix some todos
 // Cameras for dialogues:
-//      Vector type
 //      Camera type: camera model and a camera panel which allows setting current view to camera and camera to view
-//      Parallel execution, Parallel operation type
+//      Parallel operation type
 //          Break expression, fix the return expression, user functions UI
 // Figure out another demo with proper dialogues
 // Make even more demos, abandon this one!
@@ -28,7 +26,6 @@
 // Minimum size for both action editor and globals window
 
 // UI: User functions!
-// Compiler: Make the compiler multipass, currently can't call routines which were not parsed yet
 // Compiler: Types in general, lol
 // Compiler: Actual function types
 // VM/Compiler: Resize stack dynamically or just figure out maximum stack size and set it to that
@@ -36,16 +33,7 @@
 // VM: Array types
 // VM/Compiler: _RESERVE seems like a useless instruction? What are we doing wrong here exactly? There has to be
 //              a way to move the stack pointer without it
-// Very far fetch: "Run in parallel block", would require lambda functions?
-//                  Maybe we can just somehow hack it together and only run user functions like that? 
-//                  Like a user-function call flag which just spawns a new thread with a native_call
-//                       and copies num_args from top of the stack into it?
-//                  On a side note a block would literally be compiled as a separate function with all
-//                      used previous scope local variables copied in a similar manner to function calls,
-//                      in the end isn't that what lambda functions are? It wouldn't even enable first class
-//                      function support or a funarg problem because we wouldn't be able to pass the function around
-//                      and there wouldn't be a function type or any associated type-checking. Smooth.
-//                  An interesting thing there: we could have a thread.join function which would wait until a thread ends
+// An interesting thing there: we could have a thread.join function which would wait until a thread ends
 
 
 #include "triggerkit/ui.as"
@@ -135,8 +123,10 @@ array<Expression@>@ make_test_expression_array() {
 
 void print_compilation_debug_info(Translation_Context@ ctx) {
     array<string>@ function_names = ctx.user_function_indices.getKeys();
-    for (uint x = 0; x < ctx.code.length(); x++) {
-        string text = instruction_to_string(ctx.code[x]);
+    array<Instruction>@ code = ctx.code;
+
+    for (uint x = 0; x < code.length(); x++) {
+        string text = instruction_to_string(code[x]);
 
         for (uint i = 0; i < function_names.length(); i++) {
             string name = function_names[i];
@@ -154,9 +144,15 @@ void print_compilation_debug_info(Translation_Context@ ctx) {
             }
         }
 
-        if (ctx.code[x].type == INSTRUCTION_TYPE_NATIVE_CALL) {
+        if (code[x].type == INSTRUCTION_TYPE_LOAD_CONST) {
+            Memory_Cell@ constant = ctx.constants[uint(code[x].int_arg)];
+
+            text += colored_keyword(" // ") + memory_cell_to_string(constant);
+        }
+
+        if (code[x].type == INSTRUCTION_TYPE_NATIVE_CALL) {
             auto keys = ctx.native_function_indices.getKeys();
-            uint function_id = uint(ctx.code[x].int_arg);
+            uint function_id = uint(code[x].int_arg);
             string suffix_text = " (" + colored_literal(function_id + "") + ")";
 
             for (uint j = 0; j < keys.length(); j++) {
@@ -171,14 +167,14 @@ void print_compilation_debug_info(Translation_Context@ ctx) {
             }
         }
 
-        if (ctx.code[x].type == INSTRUCTION_TYPE_CALL) {
+        if (code[x].type == INSTRUCTION_TYPE_CALL) {
             auto keys = ctx.user_function_indices.getKeys();
-            uint function_id = uint(ctx.code[x].int_arg);
+            uint function_id = uint(code[x].int_arg);
             string suffix_text = " (" + colored_literal(function_id + "") + ")";
 
             for (uint j = 0; j < keys.length(); j++) {
                 if (uint(ctx.user_function_indices[keys[j]]) == function_id) {
-                    text = colored_keyword("call ") + keys[j] + suffix_text;
+                    text = colored_keyword("ucall ") + keys[j] + suffix_text;
                     break;
                 }
             }
@@ -243,14 +239,15 @@ void compile_everything() {
 
     Translation_Context@ translation_context = prepare_translation_context();
 
-    compile_user_functions(translation_context);
-
     for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
         Trigger@ trigger = state.triggers[trigger_index];
         Function_Definition@ function_definition = convert_trigger_to_function_definition(trigger);
 
         trigger.function_entry_pointer = compile_single_function_definition(translation_context, function_definition);
     }
+
+    compile_user_functions(translation_context);
+    backpatch_user_function_calls(translation_context);
 
     vm.code = translation_context.code;
     @vm.function_executors = translation_context.function_executors;
@@ -305,8 +302,8 @@ void DrawGUI() {
             save_trigger_state_into_level_params(state);
         }
 
-        if (ImGui_Button("Unload trigger state")) {
-            state.triggers.resize(0);
+        if (ImGui_Button("Run current trigger")) {
+            run_trigger(state.triggers[state.selected_trigger], array<Memory_Cell@>());
         }
 
         if (ImGui_Button("Run test simple code")) {
@@ -432,7 +429,7 @@ void Update(int paused) {
     }
 
     if (environment::is_in_dialogue_mode) {
-        vec3 cam_rot(-40.0f, 0.0f, 0.0f);
+        /*vec3 cam_rot(-40.0f, 0.0f, 0.0f);
         vec3 cam_pos(10.0f);
         float cam_zoom = 90.0f;
         camera.SetXRotation(cam_rot.x);
@@ -440,7 +437,7 @@ void Update(int paused) {
         camera.SetZRotation(cam_rot.z);
         camera.SetPos(cam_pos);
         camera.SetDistance(0.0f);
-        camera.SetFOV(cam_zoom);
+        camera.SetFOV(cam_zoom);*/
     }
 }
 

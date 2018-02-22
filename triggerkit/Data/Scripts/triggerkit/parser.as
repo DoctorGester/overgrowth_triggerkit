@@ -28,6 +28,7 @@ const string KEYWORD_ASSIGN = "assign";
 const string KEYWORD_CALL = "call";
 const string KEYWORD_REPEAT = "repeat";
 const string KEYWORD_WHILE = "while";
+const string KEYWORD_FORK = "fork";
 const string KEYWORD_IF = "if";
 const string KEYWORD_ELSE = "else";
 const string KEYWORD_RETURN = "return";
@@ -218,13 +219,20 @@ Expression@ parse_words_into_expression(Parser_State@ state) {
     } else if (word == KEYWORD_WHILE) {
         Expression@ value_expression = parse_words_into_expression(state);
 
-        Expression@ repeat = Expression();
-        repeat.type = EXPRESSION_WHILE;
-        @repeat.value_expression = value_expression;
+        Expression@ expression_while = Expression();
+        expression_while.type = EXPRESSION_WHILE;
+        @expression_while.value_expression = value_expression;
 
-        parse_words_into_expression_array(state, repeat.block_body);
+        parse_words_into_expression_array(state, expression_while.block_body);
 
-        return repeat;
+        return expression_while;
+    } else if (word == KEYWORD_FORK) {
+        Expression@ fork = Expression();
+        fork.type = EXPRESSION_FORK;
+
+        parse_words_into_expression_array(state, fork.block_body);
+
+        return fork;
     }
 
     return make_ident(word);
