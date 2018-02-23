@@ -86,6 +86,7 @@ class Translation_Context {
 
     dictionary native_function_indices;
     dictionary user_function_indices;
+    dictionary user_function_set;
     array<Function_Translation_Unit> translation_stack;
     array<Native_Function_Executor@> function_executors;
     array<Instruction_To_Backpatch> user_function_calls_to_backpatch;
@@ -130,7 +131,6 @@ Translation_Context@ prepare_translation_context() {
     Translation_Context translation_context;
     @translation_context.function_definitions = api_builder.functions;
     @translation_context.operator_definitions = collect_operator_definitions(api_builder.operator_groups);
-    translation_context.function_definition_queue = api_builder.functions; // Implicit copy
     translation_context.global_variable_scope = global_variables;
     
     // TODO this reserves space for operators, not only it's a little inefficient since
@@ -638,6 +638,11 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
                 // Dummy value
                 emit_instruction(make_user_call_instruction(0), target);
+
+                if (!ctx.user_function_set.exists(function_definition.function_name)) {
+                    ctx.function_definition_queue.insertLast(function_definition);
+                    ctx.user_function_set[function_definition.function_name] = true;
+                }
             }
 
             if (is_parent_a_block && function_definition.return_type != LITERAL_TYPE_VOID) {

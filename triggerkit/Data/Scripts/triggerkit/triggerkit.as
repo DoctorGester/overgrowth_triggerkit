@@ -150,6 +150,10 @@ void print_compilation_debug_info(Translation_Context@ ctx) {
             text += colored_keyword(" // ") + memory_cell_to_string(constant);
         }
 
+        if (code[x].type == INSTRUCTION_TYPE_RESERVE && code[x].int_arg >= 0) {
+            Log(info, "");
+        }
+
         if (code[x].type == INSTRUCTION_TYPE_NATIVE_CALL) {
             auto keys = ctx.native_function_indices.getKeys();
             uint function_id = uint(code[x].int_arg);

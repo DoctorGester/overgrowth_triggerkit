@@ -279,8 +279,7 @@ string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
         case EXPRESSION_WHILE: {
             return join(array<string> = {
                 colored_keyword("While"),
-                expression_to_string(expression.value_expression, frame),
-                "is " + literal_color + "true" + default_color + ", do"
+                expression_to_string(expression.value_expression, frame) + ", do"
             }, " ");
         }
 

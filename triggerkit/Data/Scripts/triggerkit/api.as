@@ -347,7 +347,18 @@ Api_Builder@ build_api() {
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_DIV)
     ;
-    
+
+    api
+        .operator_group("Vector arithmetics", LITERAL_TYPE_VECTOR_3)
+            .operator("+", OPERATOR_ADD)
+            .with_both_operands_as(LITERAL_TYPE_VECTOR_3)
+            .as_native_executor(api::vector_add)
+
+            .operator("-", OPERATOR_SUB)
+            .with_both_operands_as(LITERAL_TYPE_VECTOR_3)
+            .as_native_executor(api::vector_sub)
+    ;
+
     api
         .operator_group("Boolean comparison", LITERAL_TYPE_BOOL)
             .operator("is", OPERATOR_EQ)
@@ -428,22 +439,6 @@ Api_Builder@ build_api() {
         .fmt("Fork");
 
     api
-        .func("log1", api::log1)
-        .list_name("Test function 1")
-        .fmt("Log 1");
-
-    api
-        .func("log2", api::log2)
-        .list_name("Test function 2")
-        .fmt("Test function 2");
-
-    api
-        .func("print", api::print)
-        .list_name("Print a number to console")
-        .fmt("Print {} to console")
-        .takes(LITERAL_TYPE_NUMBER);
-
-    api
         .func("print_str", api::print_str)
         .list_name("Display text")
         .fmt("Display {}")
@@ -492,43 +487,11 @@ Api_Builder@ build_api() {
         .takes(LITERAL_TYPE_VECTOR_3);
 
     api
-        .func("are_strings_equal", api::are_strings_equal)
-        .list_name("__String comparison")
-        .fmt("{} is {}")
-        .takes(LITERAL_TYPE_STRING)
-        .takes(LITERAL_TYPE_STRING)
-        .returns(LITERAL_TYPE_BOOL);
-
-    api
-        .func("are_bools_equal", api::are_bools_equal)
-        .list_name("__Boolean comparison")
-        .fmt("{} is {}")
-        .takes(LITERAL_TYPE_BOOL)
-        .takes(LITERAL_TYPE_BOOL)
-        .returns(LITERAL_TYPE_BOOL);
-
-    api
-        .func("string_concat", api::concatenate_strings)
-        .list_name("__String concatenation")
-        .fmt("{} + {}")
-        .takes(LITERAL_TYPE_STRING)
-        .takes(LITERAL_TYPE_STRING)
-        .returns(LITERAL_TYPE_STRING);
-
-    api
         .func("n2s", api::n2s)
         .list_name("Number to text")
         .fmt("{} as text")
         .takes(LITERAL_TYPE_NUMBER)
         .returns(LITERAL_TYPE_STRING);
-
-    api
-        .func("nlt", api::nlt)
-        .list_name("Number LT")
-        .fmt("{} < {}")
-        .takes(LITERAL_TYPE_NUMBER)
-        .takes(LITERAL_TYPE_NUMBER)
-        .returns(LITERAL_TYPE_BOOL);
 
     // Userland functions
 
@@ -544,12 +507,10 @@ Api_Builder@ build_api() {
         .category(CATEGORY_WAIT);
 
     api
-        .func("sub_test", api::sub_func())
-        .fmt("{} - {}")
-        .takes(LITERAL_TYPE_NUMBER, "left")
-        .takes(LITERAL_TYPE_NUMBER, "right")
-        .returns(LITERAL_TYPE_NUMBER)
-        .category(CATEGORY_WAIT);
+        .func("move_camera_to", api::move_camera_to())
+        .fmt("Move camera from {} to {}")
+        .takes(LITERAL_TYPE_VECTOR_3, "from")
+        .takes(LITERAL_TYPE_VECTOR_3, "to");
 
     return api;
 }
@@ -589,13 +550,6 @@ namespace api {
         ctx.fork_to(uint(ctx.take_number()));
     }
 
-    void nlt(Native_Call_Context@ ctx) {
-        float left = ctx.take_number();
-        float right = ctx.take_number();
-
-        ctx.return_bool(left < right);
-    }
-
     void n2s(Native_Call_Context@ ctx) {
         ctx.return_string(ctx.take_number() + "");
     }
@@ -609,12 +563,22 @@ namespace api {
         ctx.return_string(right + left);
     }
 
-    void are_strings_equal(Native_Call_Context@ ctx) {
-        ctx.return_bool(ctx.take_string() == ctx.take_string());
+    void vector_add(Native_Call_Context@ ctx) {
+        vec3 left = ctx.take_vec3();
+        vec3 right = ctx.take_vec3();
+
+        ctx.return_vec3(right + left);
     }
 
-    void are_bools_equal(Native_Call_Context@ ctx) {
-        ctx.return_bool(ctx.take_number() == ctx.take_number());
+    void vector_sub(Native_Call_Context@ ctx) {
+        vec3 left = ctx.take_vec3();
+        vec3 right = ctx.take_vec3();
+
+        ctx.return_vec3(right - left);
+    }
+
+    void are_strings_equal(Native_Call_Context@ ctx) {
+        ctx.return_bool(ctx.take_string() == ctx.take_string());
     }
 
     void dialogue_say(Native_Call_Context@ ctx) {
@@ -638,22 +602,8 @@ namespace api {
         ctx.return_bool(dialogue::is_waiting_for_a_line_to_end);
     }
 
-    void log1(Native_Call_Context@ ctx) {
-        Log(info, "log1");
-    }
-
-    void log2(Native_Call_Context@ ctx) {
-        Log(info, "log2");
-    }
-
     void sleep(Native_Call_Context@ ctx) {
         ctx.thread_sleep();
-    }
-
-    void print(Native_Call_Context@ ctx) {
-        float value = ctx.take_number();
-
-        Log(info, "print: " + value);
     }
 
     void rnd(Native_Call_Context@ ctx) {
@@ -701,16 +651,18 @@ namespace api {
     }
 
     array<Expression@> move_camera_to() {
-        return array<Expression@> = {
-            make_while(null, array<Expression@> = {
-                make_function_call("sleep")
-            })
-        };
-    }
+        string code = """
+            fork ( 
+                declare Number "Start Time" call get_game_time ( ) 
+                declare Vector3 "Current Location" $ Vector3 10 10 10
+                while op < call get_game_time ( ) op + @ "Start Time" $ Number 5 ( 
+                    assign "Current Location" op + @ "Current Location" $ Vector3 0.03 0 0 
+                    call set_camera_location ( @ "Current Location" $ Vector3 0 0 0 ) 
+                    call sleep ( ) 
+                ) 
+            )
+        """;
 
-    array<Expression@>@ sub_func() {
-        return array<Expression@> = {
-            make_return(make_op_expr(OPERATOR_SUB, make_ident("left"), make_ident("right")))
-        };
+        return parse_text_into_expression_array(code);
     }
 }

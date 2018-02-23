@@ -117,6 +117,19 @@ void parse_text_into_trigger_state(string from_text, Trigger_Kit_State@ state) {
     }
 }
 
+array<Expression@>@ parse_text_into_expression_array(string text) {
+    array<Expression@> result;
+
+    Parser_State parser;
+    parser.words = split_into_words_and_quoted_pieces(text);
+
+    while (!has_finished_parsing(parser)) {
+        result.insertLast(parse_words_into_expression(parser));
+    }
+
+    return result;
+}
+
 void save_trigger_state_into_level_params(Trigger_Kit_State@ state) {
     ScriptParams@ params = level.GetScriptParams();
 

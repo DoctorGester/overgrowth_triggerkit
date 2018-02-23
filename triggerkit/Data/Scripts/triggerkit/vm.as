@@ -129,6 +129,10 @@ class Native_Call_Context {
         thread_stack_push_string(this.thread, value);
     }
 
+    void return_vec3(vec3 value) {
+        thread_stack_push_vec3(this.thread, value);
+    }
+
     void fork_to(uint function_info_pointer) {
         Thread@ fork = make_thread(vm);
 
@@ -259,6 +263,10 @@ void thread_stack_push_number(Thread@ thread, float number) {
 
 void thread_stack_push_string(Thread@ thread, string value) {
     thread.stack[thread.stack_top++].string_value = value;
+}
+
+void thread_stack_push_vec3(Thread@ thread, vec3 value) {
+    thread.stack[thread.stack_top++].vec3_value = value;
 }
 
 void thread_stack_push(Thread@ thread, Memory_Cell@ value) {

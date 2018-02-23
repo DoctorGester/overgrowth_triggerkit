@@ -86,6 +86,7 @@ array<string> split_into_words_and_quoted_pieces(string text) {
     const uint8 double_quote = "\""[0];
     const uint8 back_slash = "\\"[0];
     const uint8 line_break = "\n"[0];
+    const uint8 line_break_win = "\r"[0];
     const uint8 tab = "\t"[0];
 
     for (uint index = 0; index < text.length(); index++) {
@@ -108,7 +109,7 @@ array<string> split_into_words_and_quoted_pieces(string text) {
                 should_append_this_character = false;
             }
 
-            if (character == space || character == line_break || character == tab) {
+            if (character == space || character == line_break || character == line_break_win || character == tab) {
                 if (buffer.length() > 0 || was_in_quotes) {
                     result.insertLast(buffer);
                     buffer = "";

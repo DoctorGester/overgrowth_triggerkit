@@ -318,6 +318,7 @@ void handle_expression_type_changed_to(Expression_Type expression_type, Expressi
             break;
         }
 
+        case EXPRESSION_WHILE:
         case EXPRESSION_IF: {
             @expression.value_expression = make_lit(true);
             break;
@@ -711,6 +712,14 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
         case EXPRESSION_IF: {
             pre_expression_text("If");
             draw_editable_expression(expression.value_expression, frame, limit_to: LITERAL_TYPE_BOOL);
+
+            break;
+        }
+
+        case EXPRESSION_WHILE: {
+            pre_expression_text("While");
+            draw_editable_expression(expression.value_expression, frame, limit_to: LITERAL_TYPE_BOOL);
+            post_expression_text("is " + colored_literal("True"));
 
             break;
         }
