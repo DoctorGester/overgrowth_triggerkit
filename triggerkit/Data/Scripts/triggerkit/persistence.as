@@ -185,6 +185,7 @@ string literal_type_to_serializeable_string(Literal_Type literal_type) {
         case LITERAL_TYPE_CHARACTER: return "Character";
         case LITERAL_TYPE_VECTOR_3: return "Vector3";
         case LITERAL_TYPE_FUNCTION: return "Function";
+        case LITERAL_TYPE_CAMERA: return "Camera";
         case LITERAL_TYPE_ARRAY: return "Array";
     }
 
@@ -193,7 +194,10 @@ string literal_type_to_serializeable_string(Literal_Type literal_type) {
 
 string literal_to_serializeable_string(Literal_Type literal_type, Memory_Cell@ literal_value) {
     switch (literal_type) {
-        case LITERAL_TYPE_NUMBER: return literal_value.number_value + "";
+        case LITERAL_TYPE_CAMERA:
+        case LITERAL_TYPE_NUMBER:
+            return literal_value.number_value + "";
+
         case LITERAL_TYPE_STRING: return serializeable_string(literal_value.string_value);
         case LITERAL_TYPE_BOOL: return number_to_bool(literal_value.number_value) ? "True" : "False";
         case LITERAL_TYPE_VECTOR_3: return literal_value.vec3_value.x + " " + literal_value.vec3_value.y + " " + literal_value.vec3_value.z;

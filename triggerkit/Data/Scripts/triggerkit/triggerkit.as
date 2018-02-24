@@ -5,7 +5,9 @@
 //  if we delete a variable/user function which is used in an operator we won't be able to infer a type
 //  from it and will fail to determine the operator. This can be prevented by somehow caching the expression type in
 //  the expression itself and falling back to that type if we failed to determine one.
-// Delete the redundant __xxx_comparison + __string_concatenation operators
+// An interesting point: we currently have an operator name in the operator definition, but since operators are just overloads
+//  of functions with the same name shouldn't that be tied to Operator_Type? This way we could still fall back and actually render
+//  operators in the top-level UI even if operand types can't be deduced
 
 // More dialogue functions
 // Exclude certain functions (like boolean comparisons) from the list of available actions
@@ -26,8 +28,7 @@
 // Minimum size for both action editor and globals window
 
 // UI: User functions!
-// Compiler: Types in general, lol
-// Compiler: Actual function types
+// Compiler: Actual function types so we could get rid of EXPRESSION_FORK and the whole strapped on event architecture
 // VM/Compiler: Resize stack dynamically or just figure out maximum stack size and set it to that
 // VM: Exceptions (divide by zero, etc)
 // VM: Array types

@@ -8,24 +8,17 @@ namespace icons {
     TextureAssetRef action_other = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Nothing.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_wait = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Wait.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_dialogue = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Quest.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_camera = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Camera.png", TextureLoadFlags_NoMipmap);
 }
 
 string literal_type_to_ui_string(Literal_Type literal_type) {
     switch(literal_type) {
-        case LITERAL_TYPE_VOID: return "Void";
-        case LITERAL_TYPE_NUMBER: return "Number";
         case LITERAL_TYPE_STRING: return "Text";
         case LITERAL_TYPE_BOOL: return "Boolean";
-        case LITERAL_TYPE_OBJECT: return "Object";
-        case LITERAL_TYPE_ITEM: return "Item";
-        case LITERAL_TYPE_HOTSPOT: return "Hotspot";
-        case LITERAL_TYPE_CHARACTER: return "Character";
         case LITERAL_TYPE_VECTOR_3: return "Point";
-        case LITERAL_TYPE_FUNCTION: return "Function";
-        case LITERAL_TYPE_ARRAY: return "Array";
     }
 
-    return "unknown";
+    return literal_type_to_serializeable_string(literal_type);
 }
 
 const string default_color = "\x1BFFFFFFFF";
@@ -54,6 +47,9 @@ string colored_literal(string value) {
 string literal_to_ui_string(Expression@ literal) {
     Memory_Cell@ value = literal.literal_value;
     switch (literal.literal_type) {
+        case LITERAL_TYPE_CAMERA:
+            return "Camera #" + value.number_value;
+
         case LITERAL_TYPE_NUMBER: return colored_literal(value.number_value + "");
         case LITERAL_TYPE_STRING: return string_color + "\"" + value.string_value + "\"" + default_color;
         case LITERAL_TYPE_BOOL: return colored_literal(number_to_bool(value.number_value) ? "True" : "False");
@@ -319,6 +315,7 @@ bool icon_button(string text, string id, TextureAssetRef icon) {
     ImGui_Image(icon, image_size);
 
     ImGui_SameLine();
+    ImGui_SetCursorPosX(cursor_position.x + image_size.x + image_padding * 2);
     ImGui_Text(text);
 
     ImGui_SetCursorPos(cursor_position_after_button);

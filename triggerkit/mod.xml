@@ -18,5 +18,10 @@
           path="Data/Objects/triggerkit/trigger_hotspot.xml" 
           thumbnail="Data/UI/spawner/thumbs/Hotspot/sign_icon.png" />
 
+    <Item category="Hotspot" 
+          title="Camera" 
+          path="Data/Objects/triggerkit/trigger_camera.xml" 
+          thumbnail="Data/UI/spawner/thumbs/Hotspot/sign_icon.png" />
+
     <LevelHookFile>Data/Scripts/triggerkit/triggerkit.as</LevelHookFile>
 </Mod>

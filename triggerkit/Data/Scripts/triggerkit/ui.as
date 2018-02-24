@@ -26,6 +26,8 @@ class Trigger_Kit_State {
 
     array<Trigger@> triggers;
     array<Variable> global_variables;
+
+    bool is_cameras_window_open = true;
 }
 
 class Variable {
@@ -157,12 +159,26 @@ Trigger@ draw_trigger_list(float window_height) {
         ImGui_OpenPopup("Globals###globals_popup");
     }
 
-    bool is_open = true;
+    bool is_globals_window_open = true;
 
-    if (ImGui_BeginPopupModal("Globals###globals_popup", is_open)) {
+    ImGui_SetNextWindowSize(vec2(800, 400), ImGuiSetCond_Appearing);
+    if (ImGui_BeginPopupModal("Globals###globals_popup", is_globals_window_open)) {
         draw_globals_modal();
 
         ImGui_EndPopup();
+    }
+
+    if (state.is_cameras_window_open) {
+        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
+        if (ImGui_Begin("Cameras###camers_window", state.is_cameras_window_open)) {
+            draw_cameras_window();
+
+            ImGui_End();
+        }
+    }
+
+    if (ImGui_Button("Cameras")) {
+        state.is_cameras_window_open = true;
     }
 
     ImGui_EndGroup();
@@ -548,6 +564,10 @@ bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
             return was_edited;
         }
 
+        case LITERAL_TYPE_CAMERA:
+            ImGui_Text("Camera input here");
+            break;
+
         case LITERAL_TYPE_OBJECT:
             ImGui_Text("Object input here");
             break;
@@ -919,7 +939,7 @@ void draw_trigger_content(Trigger@ current_trigger) {
 void draw_globals_modal() {
     float window_width = ImGui_GetWindowWidth();
 
-    ImGui_PushItemWidth(int(window_width) - 14);
+    ImGui_PushItemWidth(int(window_width) - 16);
 
     ImGui_ListBoxHeader("###global_list", 16, 8);
 
@@ -984,7 +1004,90 @@ void draw_globals_modal() {
     ImGui_ListBoxFooter();
     ImGui_PopItemWidth();
 
-    if (icon_button("Add", "variable_add", icons::action_variable)) {
+    if (icon_button("New variable", "variable_add", icons::action_variable)) {
         state.global_variables.insertLast(make_variable(LITERAL_TYPE_NUMBER, "New variable"));
+    }
+}
+
+void draw_cameras_window() {
+    float window_width = ImGui_GetWindowWidth();
+    ImGui_PushItemWidth(int(window_width) - 16);
+
+    ImGui_ListBoxHeader("###cameras_list", 16, 16);
+
+    int amount_of_hotspots = GetNumHotspots();
+
+    Object@ selected_hotspot_as_object = null;
+
+    for (int hotspot_index = 0; hotspot_index < amount_of_hotspots; hotspot_index++) {
+        Hotspot@ hotspot = ReadHotspot(hotspot_index);
+
+        if (hotspot.GetTypeString() == HOTSPOT_CAMERA_TYPE) {
+            Object@ hotspot_as_object = ReadObjectFromID(hotspot.GetID());
+
+            ImGui_AlignFirstTextHeightToWidgets();
+            ImGui_Image(icons::action_camera, vec2(16, 16));
+            ImGui_SameLine();
+
+            string label = hotspot_as_object.GetName() + " (#" + hotspot.GetID() + ")";
+            bool is_selected = hotspot_as_object.IsSelected();
+
+            if (ImGui_Selectable(label, is_selected)) {
+                hotspot_as_object.SetSelected(!is_selected);
+            }
+
+            if (is_selected) {
+                @selected_hotspot_as_object = hotspot_as_object;
+            }
+        }
+    }
+
+    ImGui_ListBoxFooter();
+    ImGui_PopItemWidth();
+
+    if (icon_button("New camera", "camera_add", icons::action_camera)) {
+        int camera_id = CreateObject("Data/Objects/triggerkit/trigger_camera.xml");
+
+        if (camera_id == -1) {
+            Log(error, "Fatal error: was not able to create camera object");
+            return;
+        }
+
+        Object@ camera_as_object = ReadObjectFromID(camera_id);
+        camera_as_object.SetName("New camera");
+    }
+
+    if (selected_hotspot_as_object !is null) {
+        if (icon_button("Selected camera to view", "set_camera_to_view", icons::action_camera)) {
+            selected_hotspot_as_object.SetTranslation(camera.GetPos());
+
+            float deg_to_rad = 3.14f / 180.0f;
+
+            mat4 rotation_matrix_x;
+            rotation_matrix_x.SetRotationX(camera.GetXRotation() * deg_to_rad);
+
+            mat4 rotation_matrix_y;
+            rotation_matrix_y.SetRotationY(camera.GetYRotation() * deg_to_rad);
+
+            quaternion rotation = QuaternionFromMat4(rotation_matrix_y * rotation_matrix_x);
+
+            selected_hotspot_as_object.SetRotation(rotation);
+        }
+
+        if (icon_button("View to selected camera", "set_view_to_camera", icons::action_camera)) {
+            // TODO doesn't work!
+
+            const int entity_type_camera = 2;
+
+            array<int>@ object_ids = GetObjectIDsType(entity_type_camera);
+
+            for (uint id_index = 0; id_index < object_ids.length(); id_index++) {
+                Object@ camera_object = ReadObjectFromID(object_ids[id_index]);
+
+                camera_object.SetTranslation(selected_hotspot_as_object.GetTranslation());
+            }
+            
+            // camera.SetPos(selected_hotspot_as_object.GetTranslation());
+        }
     }
 }

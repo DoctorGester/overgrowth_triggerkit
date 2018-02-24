@@ -38,11 +38,14 @@ enum Literal_Type {
     LITERAL_TYPE_NUMBER,
     LITERAL_TYPE_STRING,
     LITERAL_TYPE_BOOL,
+    LITERAL_TYPE_VECTOR_3,
+    LITERAL_TYPE_CAMERA,
+
+    // Not implemented
     LITERAL_TYPE_OBJECT,
     LITERAL_TYPE_ITEM,
     LITERAL_TYPE_HOTSPOT,
     LITERAL_TYPE_CHARACTER,
-    LITERAL_TYPE_VECTOR_3,
     LITERAL_TYPE_FUNCTION,
     LITERAL_TYPE_ARRAY,
     LITERAL_TYPE_LAST
@@ -418,6 +421,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
             switch (expression.literal_type) {
+                case LITERAL_TYPE_CAMERA:
                 case LITERAL_TYPE_NUMBER: {
                     float value = expression.literal_value.number_value;
 

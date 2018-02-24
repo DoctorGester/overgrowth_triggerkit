@@ -109,7 +109,13 @@ array<string> split_into_words_and_quoted_pieces(string text) {
                 should_append_this_character = false;
             }
 
-            if (character == space || character == line_break || character == line_break_win || character == tab) {
+            bool is_a_space_character =
+                character == space ||
+                character == line_break ||
+                character == line_break_win ||
+                character == tab;
+
+            if (is_a_space_character) {
                 if (buffer.length() > 0 || was_in_quotes) {
                     result.insertLast(buffer);
                     buffer = "";
@@ -138,6 +144,9 @@ array<string> split_into_words_and_quoted_pieces(string text) {
 
 Expression@ parse_literal_value_from_string(Literal_Type literal_type, Parser_State@ state) {
     switch (literal_type) {
+        case LITERAL_TYPE_CAMERA:
+            return make_lit(parseInt(parser_next_word(state)));
+
         case LITERAL_TYPE_NUMBER: return make_lit(parseFloat(parser_next_word(state)));
         case LITERAL_TYPE_STRING: return make_lit(parser_next_word(state));
         case LITERAL_TYPE_BOOL: return make_lit("True" == parser_next_word(state));

@@ -1,6 +1,6 @@
 <?xml version="2.0" ?>
 <Type>generic</Type>
 <Hotspot>
-    <BillboardColorMap>Data/UI/spawner/thumbs/Hotspot/sign_icon.png</BillboardColorMap>
+    <BillboardColorMap>Data/UI/spawner/thumbs/Hotspot/checkpoint_icon.png</BillboardColorMap>
     <Script>triggerkit/trigger_hotspot.as</Script>
 </Hotspot>
