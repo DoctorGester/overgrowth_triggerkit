@@ -1009,6 +1009,22 @@ void draw_globals_modal() {
     }
 }
 
+void set_camera_to_view(Object@ camera_hotspot) {
+    camera_hotspot.SetTranslation(camera.GetPos());
+
+    float deg_to_rad = 3.14f / 180.0f;
+
+    mat4 rotation_matrix_x;
+    rotation_matrix_x.SetRotationX(camera.GetXRotation() * deg_to_rad);
+
+    mat4 rotation_matrix_y;
+    rotation_matrix_y.SetRotationY(camera.GetYRotation() * deg_to_rad);
+
+    quaternion rotation = QuaternionFromMat4(rotation_matrix_y * rotation_matrix_x);
+
+    camera_hotspot.SetRotation(rotation);
+}
+
 void draw_cameras_window() {
     float window_width = ImGui_GetWindowWidth();
     ImGui_PushItemWidth(int(window_width) - 16);
@@ -1046,7 +1062,7 @@ void draw_cameras_window() {
     ImGui_PopItemWidth();
 
     if (icon_button("New camera", "camera_add", icons::action_camera)) {
-        int camera_id = CreateObject("Data/Objects/triggerkit/trigger_camera.xml");
+        int camera_id = CreateObject("Data/Objects/triggerkit/trigger_camera.xml", false);
 
         if (camera_id == -1) {
             Log(error, "Fatal error: was not able to create camera object");
@@ -1055,28 +1071,19 @@ void draw_cameras_window() {
 
         Object@ camera_as_object = ReadObjectFromID(camera_id);
         camera_as_object.SetName("New camera");
+        camera_as_object.SetSelectable(true);
+        camera_as_object.SetSelected(true);
+
+        set_camera_to_view(camera_as_object);
     }
 
     if (selected_hotspot_as_object !is null) {
         if (icon_button("Selected camera to view", "set_camera_to_view", icons::action_camera)) {
-            selected_hotspot_as_object.SetTranslation(camera.GetPos());
-
-            float deg_to_rad = 3.14f / 180.0f;
-
-            mat4 rotation_matrix_x;
-            rotation_matrix_x.SetRotationX(camera.GetXRotation() * deg_to_rad);
-
-            mat4 rotation_matrix_y;
-            rotation_matrix_y.SetRotationY(camera.GetYRotation() * deg_to_rad);
-
-            quaternion rotation = QuaternionFromMat4(rotation_matrix_y * rotation_matrix_x);
-
-            selected_hotspot_as_object.SetRotation(rotation);
+            set_camera_to_view(selected_hotspot_as_object);
         }
 
         if (icon_button("View to selected camera", "set_view_to_camera", icons::action_camera)) {
             // TODO doesn't work!
-
             const int entity_type_camera = 2;
 
             array<int>@ object_ids = GetObjectIDsType(entity_type_camera);
@@ -1088,6 +1095,10 @@ void draw_cameras_window() {
             }
             
             // camera.SetPos(selected_hotspot_as_object.GetTranslation());
+        }
+
+        if (icon_button("Delete selected camera", "delete_camera", icons::action_camera)) {
+            QueueDeleteObjectID(selected_hotspot_as_object.GetID());
         }
     }
 }
