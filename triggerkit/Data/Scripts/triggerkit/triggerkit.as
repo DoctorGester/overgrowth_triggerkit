@@ -35,7 +35,7 @@
 // VM/Compiler: _RESERVE seems like a useless instruction? What are we doing wrong here exactly? There has to be
 //              a way to move the stack pointer without it
 // An interesting thing there: we could have a thread.join function which would wait until a thread ends
-
+// Fix setting default camera value when making a new camera literal
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"
@@ -432,18 +432,6 @@ void Update(int paused) {
             }
         }
     }
-
-    if (environment::is_in_dialogue_mode) {
-        /*vec3 cam_rot(-40.0f, 0.0f, 0.0f);
-        vec3 cam_pos(10.0f);
-        float cam_zoom = 90.0f;
-        camera.SetXRotation(cam_rot.x);
-        camera.SetYRotation(cam_rot.y);
-        camera.SetZRotation(cam_rot.z);
-        camera.SetPos(cam_pos);
-        camera.SetDistance(0.0f);
-        camera.SetFOV(cam_zoom);*/
-    }
 }
 
 void PostScriptReload() {
@@ -460,17 +448,26 @@ void SetWindowDimensions(int w, int h) {
 }
 
 int HasCameraControl() {
-    return environment::is_in_dialogue_mode ? 1 : 0;
+    return environment::has_camera_control ? 1 : 0;
 }
 
 bool DialogueCameraControl() {
-    return environment::is_in_dialogue_mode;
+    return environment::has_camera_control;
 }
 
 Expression@ make_empty_lit(Literal_Type literal_type) {
     Expression expression;
     expression.type = EXPRESSION_LITERAL;
     expression.literal_type = literal_type;
+
+    return expression;
+}
+
+Expression@ make_handle_lit(Literal_Type literal_type, int handle_id) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = literal_type;
+    expression.literal_value.number_value = handle_id;
 
     return expression;
 }

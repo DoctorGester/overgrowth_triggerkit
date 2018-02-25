@@ -44,12 +44,14 @@ string colored_literal(string value) {
     return literal_color + value + default_color;
 }
 
-string literal_to_ui_string(Expression@ literal) {
-    Memory_Cell@ value = literal.literal_value;
-    switch (literal.literal_type) {
-        case LITERAL_TYPE_CAMERA:
-            return "Camera #" + value.number_value;
+string camera_id_to_camera_name(int camera_id) {
+    Object@ camera_object = ReadObjectFromID(camera_id);
+    return camera_object.GetName() + " (#" + camera_object.GetID() + ")";
+}
 
+string literal_to_ui_string(Literal_Type literal_type, Memory_Cell@ value) {
+    switch (literal_type) {
+        case LITERAL_TYPE_CAMERA: return colored_literal("<") + camera_id_to_camera_name(int(value.number_value)) + colored_literal(">");
         case LITERAL_TYPE_NUMBER: return colored_literal(value.number_value + "");
         case LITERAL_TYPE_STRING: return string_color + "\"" + value.string_value + "\"" + default_color;
         case LITERAL_TYPE_BOOL: return colored_literal(number_to_bool(value.number_value) ? "True" : "False");
@@ -61,7 +63,7 @@ string literal_to_ui_string(Expression@ literal) {
             ")";
 
         default: {
-            Log(error, "Unsupported literal type " + literal_type_to_ui_string(literal.literal_type));
+            Log(error, "Unsupported literal type " + literal_type_to_ui_string(literal_type));
         }
     }
 
@@ -262,7 +264,7 @@ string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
                 expression_to_string(expression.value_expression, frame)
             }, " ");
         case EXPRESSION_IDENTIFIER: return colored_identifier(expression.identifier_name);
-        case EXPRESSION_LITERAL: return literal_to_ui_string(expression);
+        case EXPRESSION_LITERAL: return literal_to_ui_string(expression.literal_type, expression.literal_value);
         case EXPRESSION_CALL: return function_call_to_string(expression, frame);
         case EXPRESSION_REPEAT: {
             return join(array<string> = {
@@ -336,6 +338,7 @@ TextureAssetRef get_call_icon(Expression@ expression) {
             switch (function_definition.function_category) {
                 case CATEGORY_WAIT: return icons::action_wait;
                 case CATEGORY_DIALOGUE: return icons::action_dialogue;
+                case CATEGORY_CAMERA: return icons::action_camera;
 
                 default: return icons::action_other;
             }
@@ -468,6 +471,6 @@ array<Operator_Group@> filter_operator_groups_by_return_type(Literal_Type limit_
 }
 
 void open_expression_editor_popup(Expression@ expression, Ui_Frame_State@ frame) {
-    ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level + frame.line_counter);
+    ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level + frame.line_counter + frame.argument_counter);
     state.edited_expressions.insertLast(expression);
 }

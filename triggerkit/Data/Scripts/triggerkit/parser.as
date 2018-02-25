@@ -145,7 +145,7 @@ array<string> split_into_words_and_quoted_pieces(string text) {
 Expression@ parse_literal_value_from_string(Literal_Type literal_type, Parser_State@ state) {
     switch (literal_type) {
         case LITERAL_TYPE_CAMERA:
-            return make_lit(parseInt(parser_next_word(state)));
+            return make_handle_lit(literal_type, parseInt(parser_next_word(state)));
 
         case LITERAL_TYPE_NUMBER: return make_lit(parseFloat(parser_next_word(state)));
         case LITERAL_TYPE_STRING: return make_lit(parser_next_word(state));

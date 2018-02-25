@@ -3,6 +3,7 @@ funcdef void Native_Function_Executor(Native_Call_Context@ context);
 enum Function_Category {
     CATEGORY_OTHER,
     CATEGORY_DIALOGUE,
+    CATEGORY_CAMERA,
     CATEGORY_WAIT
 }
 
@@ -352,11 +353,11 @@ Api_Builder@ build_api() {
         .operator_group("Vector arithmetics", LITERAL_TYPE_VECTOR_3)
             .operator("+", OPERATOR_ADD)
             .with_both_operands_as(LITERAL_TYPE_VECTOR_3)
-            .as_native_executor(api::vector_add)
+            .as_native_executor(operators::vector_add)
 
             .operator("-", OPERATOR_SUB)
             .with_both_operands_as(LITERAL_TYPE_VECTOR_3)
-            .as_native_executor(api::vector_sub)
+            .as_native_executor(operators::vector_sub)
     ;
 
     api
@@ -401,11 +402,11 @@ Api_Builder@ build_api() {
         .operator_group("String comparison", LITERAL_TYPE_BOOL)
             .operator("is", OPERATOR_EQ)
             .with_both_operands_as(LITERAL_TYPE_STRING)
-            .as_native_executor(api::are_strings_equal)
+            .as_native_executor(operators::are_strings_equal)
 
             .operator("is not", OPERATOR_NEQ)
             .with_both_operands_as(LITERAL_TYPE_STRING)
-            .as_native_executor(api::are_strings_equal)
+            .as_native_executor(operators::are_strings_equal)
             .invert_result()
     ;
 
@@ -413,7 +414,7 @@ Api_Builder@ build_api() {
         .operator_group("String concatenation", LITERAL_TYPE_STRING)
             .operator("+", OPERATOR_ADD)
             .with_both_operands_as(LITERAL_TYPE_STRING)
-            .as_native_executor(api::concatenate_strings)
+            .as_native_executor(operators::concatenate_strings)
     ;
 
     api
@@ -465,7 +466,41 @@ Api_Builder@ build_api() {
 
     api
         .func("start_dialogue", api::start_dialogue)
-        .fmt("Show dialogue screen");
+        .fmt("Show dialogue screen")
+        .category(CATEGORY_DIALOGUE);
+
+    api
+        .func("end_dialogue", api::end_dialogue)
+        .fmt("Hide dialogue screen")
+        .category(CATEGORY_DIALOGUE);
+
+    api
+        .func("take_camera_control", api::take_camera_control)
+        .fmt("Take camera control")
+        .category(CATEGORY_CAMERA);
+
+    api
+        .func("release_camera_control", api::release_camera_control)
+        .fmt("Release camera control")
+        .category(CATEGORY_CAMERA);
+
+    api
+        .func("set_current_camera", api::set_current_camera)
+        .fmt("Set camera to {}")
+        .category(CATEGORY_CAMERA)
+        .takes(LITERAL_TYPE_CAMERA);
+
+    api
+        .func("transition_camera", api::transition_camera)
+        .fmt("Move camera from {} to {} over {} seconds")
+        .category(CATEGORY_CAMERA)
+        .takes(LITERAL_TYPE_CAMERA)
+        .takes(LITERAL_TYPE_CAMERA)
+        .takes(LITERAL_TYPE_NUMBER);
+
+    api
+        .func("end_dialogue", api::end_dialogue)
+        .fmt("Hide dialogue screen");
 
     api
         .func("end_dialogue", api::end_dialogue)
@@ -516,16 +551,80 @@ Api_Builder@ build_api() {
 }
 
 namespace environment {
+    enum Camera_Mode {
+        CAMERA_MODE_NONE,
+        CAMERA_MODE_STATIC,
+        CAMERA_MODE_TRAVELLING
+    }
+
     bool is_in_dialogue_mode = false;
-    vec3 camera_position;
-    vec3 camera_look_at;
+    bool has_camera_control = false;
+    int current_static_camera = 0;
+    Camera_Mode current_camera_mode = CAMERA_MODE_NONE;
+
+    int camera_travelling_from;
+    int camera_travelling_to;
+    float camera_travel_time;
+    float camera_travel_should_finish_at;
+
+    void set_camera_location_and_rotation(vec3 position, quaternion rotation) {
+        const float MPI = 3.14159265359;
+
+        // From: Overgrowth/dialogue.as
+        // Set camera euler angles from rotation matrix
+        vec3 front = Mult(rotation, vec3(0, 0, 1));
+        float y_rot = atan2(front.x, front.z) * 180.0f / MPI;
+        float x_rot = asin(front[1]) * -180.0f / MPI;
+        vec3 up = Mult(rotation, vec3(0, 1, 0));
+        vec3 expected_right = normalize(cross(front, vec3(0, 1, 0)));
+        vec3 expected_up = normalize(cross(expected_right, front));
+
+        float z_rot = atan2(dot(up, expected_right), dot(up, expected_up)) * 180.0f / MPI;
+
+        camera.SetPos(position);
+        camera.SetXRotation(floor(x_rot * 100.0f + 0.5f) / 100.0f);
+        camera.SetYRotation(floor(y_rot * 100.0f + 0.5f) / 100.0f);
+        camera.SetZRotation(floor(z_rot * 100.0f + 0.5f) / 100.0f);
+    }
+
+    float ease_out_circular(float t) {
+        t = t - 1;
+        return sqrt(1 - t * t);
+    }
 
     void update() {
+        if (has_camera_control) {
+            switch (current_camera_mode) {
+                case CAMERA_MODE_STATIC: {
+                    Object@ camera_object = ReadObjectFromID(current_static_camera);
+
+                    set_camera_location_and_rotation(camera_object.GetTranslation(), camera_object.GetRotation());
+
+                    break;
+                }
+
+                case CAMERA_MODE_TRAVELLING: {
+                    float travel_progress = min(1.0f - (camera_travel_should_finish_at - the_time) / camera_travel_time, 1.0f);
+
+                    travel_progress = ease_out_circular(travel_progress);
+
+                    Log(info, (travel_progress) + "");
+
+                    Object@ camera_from = ReadObjectFromID(camera_travelling_from);
+                    Object@ camera_to = ReadObjectFromID(camera_travelling_to);
+
+                    quaternion new_rotation = mix(camera_from.GetRotation(), camera_to.GetRotation(), travel_progress);
+                    vec3 new_position = mix(camera_from.GetTranslation(), camera_to.GetTranslation(), travel_progress);
+
+                    set_camera_location_and_rotation(new_position, new_rotation);
+
+                    break;
+                }
+            }
+        }
+
         if (is_in_dialogue_mode) {
             dialogue::update();
-
-            camera.SetPos(camera_position);
-            camera.LookAt(camera_look_at);
         }
     }
 
@@ -542,18 +641,7 @@ namespace environment {
     }
 }
 
-namespace api {
-    void do_nothing(Native_Call_Context@ ctx){
-    }
-
-    void fork(Native_Call_Context@ ctx){
-        ctx.fork_to(uint(ctx.take_number()));
-    }
-
-    void n2s(Native_Call_Context@ ctx) {
-        ctx.return_string(ctx.take_number() + "");
-    }
-
+namespace operators {
     void concatenate_strings(Native_Call_Context@ ctx) {
         string left = ctx.take_string();
         string right = ctx.take_string();
@@ -579,6 +667,19 @@ namespace api {
 
     void are_strings_equal(Native_Call_Context@ ctx) {
         ctx.return_bool(ctx.take_string() == ctx.take_string());
+    }
+}
+
+namespace api {
+    void do_nothing(Native_Call_Context@ ctx){
+    }
+
+    void fork(Native_Call_Context@ ctx){
+        ctx.fork_to(uint(ctx.take_number()));
+    }
+
+    void n2s(Native_Call_Context@ ctx) {
+        ctx.return_string(ctx.take_number() + "");
     }
 
     void dialogue_say(Native_Call_Context@ ctx) {
@@ -620,12 +721,37 @@ namespace api {
         ctx.return_number(the_time);
     }
 
+    void take_camera_control(Native_Call_Context@ ctx) {
+        if (!environment::has_camera_control) {
+            environment::current_camera_mode = environment::CAMERA_MODE_NONE;
+            environment::has_camera_control = true;
+        }
+    }
+
+    void release_camera_control(Native_Call_Context@ ctx) {
+        environment::has_camera_control = false;
+    }
+
+    void set_current_camera(Native_Call_Context@ ctx) {
+        environment::current_camera_mode = environment::CAMERA_MODE_STATIC;
+        environment::current_static_camera = ctx.take_handle_id();
+    }
+
+    void transition_camera(Native_Call_Context@ ctx) {
+        environment::current_camera_mode = environment::CAMERA_MODE_TRAVELLING;
+        environment::camera_travelling_from = ctx.take_handle_id();
+        environment::camera_travelling_to = ctx.take_handle_id();
+        environment::camera_travel_time = ctx.take_number();
+        environment::camera_travel_should_finish_at = the_time + environment::camera_travel_time;
+    }
+
+    // TODO maybe we could actually use this
     void set_camera_location(Native_Call_Context@ ctx) {
         vec3 position = ctx.take_vec3();
         vec3 look_at = ctx.take_vec3();
 
-        environment::camera_position = position;
-        environment::camera_look_at = look_at;
+        /*environment::camera_position = position;
+        environment::camera_look_at = look_at;*/
     }
 
     array<Expression@>@ wait_until_dialogue_line_is_complete() {

@@ -20,7 +20,6 @@ class Trigger_Kit_State {
     array<Event_Definition@> native_events;
     array<Operator_Group@> operator_groups;
 
-    int current_stack_depth = 0;
     int selected_action_category = 0;
     int selected_trigger;
 
@@ -40,6 +39,7 @@ class Ui_Frame_State {
     uint expression_index;
     uint popup_stack_level;
     uint line_counter;
+    uint argument_counter;
 
     bool drawing_conditions_block;
 
@@ -519,7 +519,7 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
     bool is_open = true;
 
     ImGui_SetNextWindowPos(ImGui_GetWindowPos() + vec2(20, 20), ImGuiSetCond_Appearing);
-    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter + frame.argument_counter, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
         frame.popup_stack_level++;
 
         if (parent_is_a_code_block && !frame.drawing_conditions_block) {
@@ -534,6 +534,10 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
 
     if (!is_open) {
         pop_edited_expression(frame);
+    }
+
+    if (!parent_is_a_code_block) {
+        frame.argument_counter++;
     }
 }
 
@@ -564,9 +568,30 @@ bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
             return was_edited;
         }
 
-        case LITERAL_TYPE_CAMERA:
-            ImGui_Text("Camera input here");
-            break;
+        case LITERAL_TYPE_CAMERA: {
+            array<Object@>@ camera_objects = list_camera_objects();
+            array<string> camera_names;
+
+            int selected_camera = -1;
+
+            for (uint camera_index = 0; camera_index < camera_objects.length(); camera_index++) {
+                Object@ camera_object = camera_objects[camera_index];
+
+                // TODO a tad inefficient, could make a separate function which makes a name out of an object
+                camera_names.insertLast(camera_id_to_camera_name(camera_object.GetID()));
+
+                if (camera_object.GetID() == int(literal_value.number_value)) {
+                    selected_camera = camera_index;
+                }
+            }
+
+            if (ImGui_Combo(unique_id, selected_camera, camera_names)) {
+                literal_value.number_value = camera_objects[selected_camera].GetID();
+                return true;
+            }
+
+            return false;
+        }
 
         case LITERAL_TYPE_OBJECT:
             ImGui_Text("Object input here");
@@ -697,6 +722,8 @@ void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@
         max_text_width = max(operator_name_width, max_text_width);
     }
 
+    frame.argument_counter = 0;
+
     draw_expression_and_continue_on_the_same_line(expression.left_operand, frame, limit_to: fitting_operator.left_operand_type);
 
     ImGui_PushItemWidth(max_text_width);
@@ -809,6 +836,8 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Li
             Expression@ new_expression = make_function_call("do_nothing");
             expressions.insertLast(new_expression);
 
+            frame.argument_counter = 0;
+
             open_expression_editor_popup(new_expression, frame);
             return;
         }
@@ -817,6 +846,8 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Li
     push_ui_variable_scope(frame);
 
     for (int index = 0; uint(index) < expressions.length(); index++) {
+        frame.argument_counter = 0;
+
         Expression@ expression = expressions[uint(index)];
 
         bool is_in_editor_popup = state.edited_expressions.length() > 0;
@@ -1025,36 +1056,47 @@ void set_camera_to_view(Object@ camera_hotspot) {
     camera_hotspot.SetRotation(rotation);
 }
 
+array<Object@>@ list_camera_objects() {
+    array<Object@> result;
+
+    int amount_of_hotspots = GetNumHotspots();
+
+    for (int hotspot_index = 0; hotspot_index < amount_of_hotspots; hotspot_index++) {
+        Hotspot@ hotspot = ReadHotspot(hotspot_index);
+
+        if (hotspot.GetTypeString() == HOTSPOT_CAMERA_TYPE) {
+            result.insertLast(ReadObjectFromID(hotspot.GetID()));
+        }
+    }
+
+    return result;
+}
+
 void draw_cameras_window() {
     float window_width = ImGui_GetWindowWidth();
     ImGui_PushItemWidth(int(window_width) - 16);
 
     ImGui_ListBoxHeader("###cameras_list", 16, 16);
 
-    int amount_of_hotspots = GetNumHotspots();
-
     Object@ selected_hotspot_as_object = null;
 
-    for (int hotspot_index = 0; hotspot_index < amount_of_hotspots; hotspot_index++) {
-        Hotspot@ hotspot = ReadHotspot(hotspot_index);
+    array<Object@>@ camera_objects = list_camera_objects();
 
-        if (hotspot.GetTypeString() == HOTSPOT_CAMERA_TYPE) {
-            Object@ hotspot_as_object = ReadObjectFromID(hotspot.GetID());
+    for (uint camera_index = 0; camera_index < camera_objects.length(); camera_index++) {
+        Object@ camera_object = camera_objects[camera_index];
 
-            ImGui_AlignFirstTextHeightToWidgets();
-            ImGui_Image(icons::action_camera, vec2(16, 16));
-            ImGui_SameLine();
+        ImGui_AlignFirstTextHeightToWidgets();
+        ImGui_Image(icons::action_camera, vec2(16, 16));
+        ImGui_SameLine();
 
-            string label = hotspot_as_object.GetName() + " (#" + hotspot.GetID() + ")";
-            bool is_selected = hotspot_as_object.IsSelected();
+        bool is_selected = camera_object.IsSelected();
 
-            if (ImGui_Selectable(label, is_selected)) {
-                hotspot_as_object.SetSelected(!is_selected);
-            }
+        if (ImGui_Selectable(camera_id_to_camera_name(camera_object.GetID()), is_selected)) {
+            camera_object.SetSelected(!is_selected);
+        }
 
-            if (is_selected) {
-                @selected_hotspot_as_object = hotspot_as_object;
-            }
+        if (is_selected) {
+            @selected_hotspot_as_object = camera_object;
         }
     }
 
@@ -1091,7 +1133,7 @@ void draw_cameras_window() {
             for (uint id_index = 0; id_index < object_ids.length(); id_index++) {
                 Object@ camera_object = ReadObjectFromID(object_ids[id_index]);
 
-                camera_object.SetTranslation(selected_hotspot_as_object.GetTranslation());
+                // camera_object.SetTranslation(selected_hotspot_as_object.GetTranslation());
             }
             
             // camera.SetPos(selected_hotspot_as_object.GetTranslation());

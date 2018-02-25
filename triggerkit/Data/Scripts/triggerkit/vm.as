@@ -109,6 +109,10 @@ class Native_Call_Context {
         return thread_stack_pop(this.thread).number_value;
     }
 
+    int take_handle_id() {
+        return int(thread_stack_pop(this.thread).number_value);
+    }
+
     string take_string() {
         return thread_stack_pop(this.thread).string_value;
     }
