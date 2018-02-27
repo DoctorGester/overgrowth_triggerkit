@@ -110,24 +110,10 @@ Trigger_Kit_State@ make_trigger_kit_state() {
     return state;
 }
 
-Trigger@ draw_trigger_list(float window_height) {
-    string[] triggerNames;
-
-    for (uint i = 0; i < state.triggers.length(); i++) {
-        triggerNames.insertLast(state.triggers[i].name);
-    }
-
+void draw_icon_menu_bar() {
     ImGui_BeginGroup();
-    ImGui_PushItemWidth(200);
-    ImGui_AlignFirstTextHeightToWidgets();
-    ImGui_Text("Triggers");
-    const int itemSize = 17;
-    float windowRemaining = window_height - ImGui_GetCursorPosY() - itemSize * 4;
 
-    ImGui_ListBox("###TriggerList", state.selected_trigger, triggerNames, int(floor(windowRemaining / itemSize)));
-    ImGui_PopItemWidth();
-
-    if (ImGui_Button("Add")) {
+    if (icon_button("New trigger", "new_trigger", icons::trigger)) {
         string trigger_name = find_vacant_trigger_name();
 
         Trigger trigger(trigger_name);
@@ -139,25 +125,11 @@ Trigger@ draw_trigger_list(float window_height) {
 
     ImGui_SameLine();
 
-    if (ImGui_Button("Rem")) {
-        state.triggers.removeAt(uint(state.selected_trigger));
-        state.selected_trigger = max(state.selected_trigger - 1, 0);
-
-        //state.Persist();
+    if (icon_button("Variables", "open_globals", icons::action_variable)) {
+        ImGui_OpenPopup("Variables###globals_popup");
     }
 
     ImGui_SameLine();
-
-    if (ImGui_Button("Load")) {
-        // state.triggers = Persistence::Load();
-        // state.TransformParseTree();
-    }
-
-    ImGui_SameLine();
-
-    if (ImGui_Button("Globals")) {
-        ImGui_OpenPopup("Globals###globals_popup");
-    }
 
     bool is_globals_window_open = true;
 
@@ -177,17 +149,43 @@ Trigger@ draw_trigger_list(float window_height) {
         }
     }
 
-    if (ImGui_Button("Cameras")) {
-        state.is_cameras_window_open = true;
+    if (icon_button("Cameras", "open_cameras", icons::action_camera)) {
+        state.is_cameras_window_open = !state.is_cameras_window_open;
     }
 
     ImGui_EndGroup();
+}
 
-    if (state.triggers.length() <= uint(state.selected_trigger)) {
-        return null;
+void draw_trigger_list() {
+    ImGui_BeginGroup();
+    ImGui_AlignFirstTextHeightToWidgets();
+    ImGui_Text("Triggers");
+
+    ImGui_ListBoxHeader("##trigger_list", vec2(200, ImGui_GetWindowHeight() - ImGui_GetCursorPosY() - 8));
+
+    for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
+        string trigger_name_and_id = state.triggers[trigger_index].name + "##list_trigger" + trigger_index;
+
+        if (ImGui_Selectable(trigger_name_and_id, int(trigger_index) == state.selected_trigger)) {
+            state.selected_trigger = trigger_index;
+        }
+
+        if (ImGui_BeginPopupContextItem("##list_trigger_popup" + trigger_index)) {
+            if (ImGui_MenuItem("Delete")) {
+                state.triggers.removeAt(trigger_index);
+                state.selected_trigger = max(state.selected_trigger - 1, 0);
+
+                //state.Persist();
+            }
+
+            ImGui_EndPopup();
+        }
+
     }
 
-    return state.triggers[uint(state.selected_trigger)];
+    ImGui_ListBoxFooter();
+
+    ImGui_EndGroup();
 }
 
 void draw_trigger_kit() {
@@ -217,12 +215,13 @@ void draw_trigger_kit() {
         ImGui_EndMenuBar();
     }
 
-    Trigger@ currentTrigger = draw_trigger_list(window_height);
+    draw_icon_menu_bar();
+    draw_trigger_list();
 
     ImGui_SameLine();
 
-    if (currentTrigger !is null) {
-        draw_trigger_content(currentTrigger);
+    if (state.selected_trigger != -1 && uint(state.selected_trigger) < state.triggers.length()) {
+        draw_trigger_content(state.triggers[uint(state.selected_trigger)]);
     }
     
     ImGui_End();
@@ -717,7 +716,7 @@ void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@
         }
 
         string operator_name = operator_type_to_ui_string(operator.operator_type);
-        
+
         operator_names.insertLast(colored_keyword(operator_name));
 
         int operator_name_width = int(ImGui_CalcTextSize(operator_name).x + 35);
@@ -919,15 +918,29 @@ void draw_trigger_content(Trigger@ current_trigger) {
     ImGui_AlignFirstTextHeightToWidgets();
     ImGui_Text("Content");
 
-    ImGui_SetTextBuf(current_trigger.name);
-    if (ImGui_InputText("###TriggerName")) {
-        current_trigger.name = ImGui_GetTextBuf();
+    {
+        ImGui_PushItemWidth(-1);
+        ImGui_SetTextBuf(current_trigger.name);
+        if (ImGui_InputText("##trigger_name")) {
+            current_trigger.name = ImGui_GetTextBuf();
+        }
+
+        ImGui_PopItemWidth();
     }
 
-    ImGui_SetTextBuf(current_trigger.description);
-    if (ImGui_InputTextMultiline("###TriggerDescription", vec2(0, 50))) {
-        current_trigger.description = ImGui_GetTextBuf();
+    {
+        ImGui_PushItemWidth(-1);
+        ImGui_SetTextBuf(current_trigger.description);
+        if (ImGui_InputTextMultiline("##trigger_description", vec2(0, 50))) {
+            current_trigger.description = ImGui_GetTextBuf();
+        }
+
+        ImGui_PopItemWidth();
     }
+
+    vec2 size = ImGui_GetWindowSize() - ImGui_GetCursorPos() - vec2(8, 8);
+
+    ImGui_ListBoxHeader("##main_list", size);
 
     Ui_Frame_State frame;
 
@@ -935,15 +948,23 @@ void draw_trigger_content(Trigger@ current_trigger) {
     @global_scope.variables = state.global_variables;
     @frame.top_scope = global_scope;
 
-    if (ImGui_TreeNodeEx("Event###event_block", ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui_TreeNodeEx("Event##event_block", ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
         int selected_event = 0;
         array<string> event_names;
 
         for (uint event_index = 0; event_index < EVENT_LAST; event_index++) {
             event_names.insertLast(state.native_events[event_index].pretty_name);
+
+            if (current_trigger.event_type == Event_Type(event_index)) {
+                selected_event = event_index;
+            }
         }
 
-        ImGui_Combo("##function_selector", selected_event, event_names);
+        ImGui_Image(icons::event, size: vec2(16, 16));
+        ImGui_SameLine();
+        if (ImGui_Combo("##function_selector", selected_event, event_names)) {
+            current_trigger.event_type = Event_Type(selected_event);
+        }
 
         ImGui_TreePop();
     }
@@ -958,13 +979,19 @@ void draw_trigger_content(Trigger@ current_trigger) {
         frame.top_scope.variables.insertLast(variable);
     }
 
+    ImGui_PushStyleColor(ImGuiCol_Button, vec4(0.35f, 0.60f, 0.61f, 0.22f)); // TODO we should just make our own routine for drawing expression buttons
+
     frame.drawing_conditions_block = true;
     draw_expressions_in_a_tree_node("Conditions", current_trigger.conditions, frame, limit_to: LITERAL_TYPE_BOOL);
 
     frame.drawing_conditions_block = false;
     draw_expressions_in_a_tree_node("Actions", current_trigger.actions, frame);
 
+    ImGui_PopStyleColor();
+
     pop_ui_variable_scope(frame);
+
+    ImGui_ListBoxFooter();
 
     ImGui_EndGroup();
 }

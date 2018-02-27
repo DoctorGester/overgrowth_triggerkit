@@ -276,12 +276,18 @@ void compile_everything() {
 void Init(string p_level_name) {
     initialize_state_and_vm();
     compile_everything();
+
+    level.SendMessage(event_type_to_serializeable_string(EVENT_LEVEL_START));
 }
 
 void ReceiveMessage(string message) {
     // Spam
     if (message == "tutorial") {
         return;
+    }
+    
+    if (message == "post_reset") {
+        level.SendMessage(event_type_to_serializeable_string(EVENT_LEVEL_START));
     }
 
     try_handle_event_from_message(message);
@@ -431,7 +437,9 @@ void DrawGUI() {
 }
 
 void Update(int paused) {
-    environment::update();
+    if (!EditorModeActive()) {
+        environment::update();
+    }
 
     if (!(vm is null)) {
         if (vm.threads.length() > 0) {
@@ -458,11 +466,15 @@ void SetWindowDimensions(int w, int h) {
 }
 
 int HasCameraControl() {
+    if (EditorModeActive()) {
+        return 0;
+    }
+
     return environment::has_camera_control ? 1 : 0;
 }
 
 bool DialogueCameraControl() {
-    return environment::has_camera_control;
+    return !EditorModeActive() && environment::has_camera_control;
 }
 
 Expression@ make_empty_lit(Literal_Type literal_type) {

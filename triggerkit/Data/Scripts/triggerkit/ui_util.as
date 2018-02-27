@@ -1,14 +1,17 @@
 funcdef bool Function_Predicate(Function_Definition@ f);
 
 namespace icons {
+    const string icons_folder = "Data/Images/triggerkit/ui/icons/";
     TextureAssetRef image_blank = LoadTexture("Data/Images/triggerkit/ui/image_blank.png", TextureLoadFlags_NoMipmap);
 
-    TextureAssetRef action_variable = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-SetVariables.png", TextureLoadFlags_NoMipmap);
-    TextureAssetRef action_logical = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Logical.png", TextureLoadFlags_NoMipmap);
-    TextureAssetRef action_other = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Nothing.png", TextureLoadFlags_NoMipmap);
-    TextureAssetRef action_wait = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Wait.png", TextureLoadFlags_NoMipmap);
-    TextureAssetRef action_dialogue = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Quest.png", TextureLoadFlags_NoMipmap);
-    TextureAssetRef action_camera = LoadTexture("Data/Images/triggerkit/ui/icons/Actions-Camera.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef event = LoadTexture(icons_folder + "Editor-TriggerEvent.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef trigger = LoadTexture(icons_folder + "Editor-Trigger.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_variable = LoadTexture(icons_folder + "Actions-SetVariables.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_logical = LoadTexture(icons_folder + "Actions-Logical.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_other = LoadTexture(icons_folder + "Actions-Nothing.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_wait = LoadTexture(icons_folder + "Actions-Wait.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_dialogue = LoadTexture(icons_folder + "Actions-Quest.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_camera = LoadTexture(icons_folder + "Actions-Camera.png", TextureLoadFlags_NoMipmap);
 }
 
 string literal_type_to_ui_string(Literal_Type literal_type) {
@@ -303,16 +306,18 @@ string expression_to_string(Expression@ expression) {
 }
 
 bool icon_button(string text, string id, TextureAssetRef icon) {
-    const float size_y = 28.0f;
+    const float size_y = 24.0f;
     float text_width = ImGui_CalcTextSize(text, hide_text_after_double_hash: true).x;
 
     vec2 cursor_position = ImGui_GetCursorPos();
     vec2 image_size(16, 16);
     float image_padding = size_y / 2.0f - (image_size.y / 2.0f);
-    vec2 size(image_padding * 3 + image_size.x + text_width, size_y);
+    vec2 button_size(image_padding * 3 + image_size.x + text_width, size_y);
     vec2 image_position(image_padding, image_padding);
 
-    bool activated = ImGui_InvisibleButton(id, size);
+    vec2 pre = ImGui_GetCursorPos();
+
+    bool activated = ImGui_InvisibleButton(id, button_size);
 
     vec2 cursor_position_after_button = ImGui_GetCursorPos();
     vec4 color(0.35f, 0.40f, 0.61f, 0.62f);
@@ -324,7 +329,7 @@ bool icon_button(string text, string id, TextureAssetRef icon) {
     }
 
     ImGui_SetCursorPos(cursor_position);
-    ImGui_Image(icons::image_blank, size, tint_color: color);
+    ImGui_Image(icons::image_blank, button_size, tint_color: color);
 
     ImGui_SetCursorPos(cursor_position + image_position);
     ImGui_Image(icon, image_size);
@@ -333,7 +338,9 @@ bool icon_button(string text, string id, TextureAssetRef icon) {
     ImGui_SetCursorPosX(cursor_position.x + image_size.x + image_padding * 2);
     ImGui_Text(text);
 
-    ImGui_SetCursorPos(cursor_position_after_button);
+    ImGui_SetCursorPos(cursor_position);
+
+    ImGui_Dummy(button_size); // For proper alignment
 
     return activated;
 }

@@ -10,7 +10,6 @@ enum Function_Category {
 class Event_Definition {
     Event_Type type;
     string pretty_name;
-    string format;
     array<Literal_Type> argument_types;
     array<Literal_Type> variable_types;
     array<string> variable_names;
@@ -23,11 +22,6 @@ class Event_Definition {
     Event_Definition@ defines(string variable_name, Literal_Type literal_type) {
         variable_types.insertLast(literal_type);
         variable_names.insertLast(variable_name);
-        return this;
-    }
-
-    Event_Definition@ fmt(string format_string) {
-        format = format_string;
         return this;
     }
 
@@ -321,11 +315,14 @@ Api_Builder@ build_api() {
     // TODO types shorthand like Literal_Type type_number = LITERAL_TYPE_NUMBER?
 
     api
+        .event(EVENT_LEVEL_START)
+        .list_name("Level starts");
+
+    api
         .event(EVENT_CHARACTER_ENTERS_REGION)
         .list_name("Character enters a region")
         .defines("Entering Character", LITERAL_TYPE_STRING)
-        .defines("Region being entered", LITERAL_TYPE_STRING)
-        .fmt("A character enters a region");
+        .defines("Region being entered", LITERAL_TYPE_STRING);
 
     api
         .operator_group("Arithmetics", LITERAL_TYPE_NUMBER)
@@ -582,6 +579,7 @@ namespace environment {
         camera.SetXRotation(floor(x_rot * 100.0f + 0.5f) / 100.0f);
         camera.SetYRotation(floor(y_rot * 100.0f + 0.5f) / 100.0f);
         camera.SetZRotation(floor(z_rot * 100.0f + 0.5f) / 100.0f);
+        camera.SetDistance(0.0f);
     }
 
     float ease_out_circular(float t) {
