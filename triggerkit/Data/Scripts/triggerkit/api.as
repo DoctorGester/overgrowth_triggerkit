@@ -93,8 +93,6 @@ class Function_Definition {
 }
 
 class Operator_Definition {
-    string name;
-    string list_name;
     Literal_Type left_operand_type;
     Literal_Type right_operand_type;
 
@@ -115,16 +113,15 @@ class Operator_Definition {
 }
 
 class Operator_Group {
-    string name;
     Literal_Type return_type;
+    string name;
     array<Operator_Definition@> operators;
 
     private Operator_Definition@ current_instance;
 
-    Operator_Group@ operator(string name, Operator_Type operator_type) {
+    Operator_Group@ operator(Operator_Type operator_type) {
         @current_instance = Operator_Definition();
         @current_instance.parent_group = this;
-        current_instance.name = name;
         current_instance.operator_type = operator_type;
         current_instance.invert_result = false;
 
@@ -332,79 +329,79 @@ Api_Builder@ build_api() {
 
     api
         .operator_group("Arithmetics", LITERAL_TYPE_NUMBER)
-            .operator("+", OPERATOR_ADD)
+            .operator(OPERATOR_ADD)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_ADD)
 
-            .operator("-", OPERATOR_SUB)
+            .operator(OPERATOR_SUB)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_SUB)
 
-            .operator("*", OPERATOR_MUL)
+            .operator(OPERATOR_MUL)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_MUL)
 
-            .operator("/", OPERATOR_DIV)
+            .operator(OPERATOR_DIV)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_DIV)
     ;
 
     api
         .operator_group("Vector arithmetics", LITERAL_TYPE_VECTOR_3)
-            .operator("+", OPERATOR_ADD)
+            .operator(OPERATOR_ADD)
             .with_both_operands_as(LITERAL_TYPE_VECTOR_3)
             .as_native_executor(operators::vector_add)
 
-            .operator("-", OPERATOR_SUB)
+            .operator(OPERATOR_SUB)
             .with_both_operands_as(LITERAL_TYPE_VECTOR_3)
             .as_native_executor(operators::vector_sub)
     ;
 
     api
         .operator_group("Boolean comparison", LITERAL_TYPE_BOOL)
-            .operator("is", OPERATOR_EQ)
+            .operator(OPERATOR_EQ)
             .with_both_operands_as(LITERAL_TYPE_BOOL)
             .as_singular_instruction(INSTRUCTION_TYPE_EQ)
 
-            .operator("is not", OPERATOR_NEQ)
+            .operator(OPERATOR_NEQ)
             .with_both_operands_as(LITERAL_TYPE_BOOL)
             .as_singular_instruction(INSTRUCTION_TYPE_NEQ)
     ;
 
     api
         .operator_group("Number comparison", LITERAL_TYPE_BOOL)
-            .operator("is", OPERATOR_EQ)
+            .operator(OPERATOR_EQ)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_EQ)
 
-            .operator("is not", OPERATOR_NEQ)
+            .operator(OPERATOR_NEQ)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_NEQ)
 
-            .operator("is more than", OPERATOR_GT)
+            .operator(OPERATOR_GT)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_GT)
 
-            .operator("is less than", OPERATOR_LT)
+            .operator(OPERATOR_LT)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_LT)
 
-            .operator("is more or equals to", OPERATOR_GE)
+            .operator(OPERATOR_GE)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_GE)
 
-            .operator("is less or equals to", OPERATOR_LE)
+            .operator(OPERATOR_LE)
             .with_both_operands_as(LITERAL_TYPE_NUMBER)
             .as_singular_instruction(INSTRUCTION_TYPE_LE)
     ;
 
     api
         .operator_group("String comparison", LITERAL_TYPE_BOOL)
-            .operator("is", OPERATOR_EQ)
+            .operator(OPERATOR_EQ)
             .with_both_operands_as(LITERAL_TYPE_STRING)
             .as_native_executor(operators::are_strings_equal)
 
-            .operator("is not", OPERATOR_NEQ)
+            .operator(OPERATOR_NEQ)
             .with_both_operands_as(LITERAL_TYPE_STRING)
             .as_native_executor(operators::are_strings_equal)
             .invert_result()
@@ -412,20 +409,20 @@ Api_Builder@ build_api() {
 
     api
         .operator_group("String concatenation", LITERAL_TYPE_STRING)
-            .operator("+", OPERATOR_ADD)
+            .operator(OPERATOR_ADD)
             .with_both_operands_as(LITERAL_TYPE_STRING)
             .as_native_executor(operators::concatenate_strings)
     ;
 
     api
         .operator_group("And", LITERAL_TYPE_BOOL)
-            .operator("and", OPERATOR_AND)
+            .operator(OPERATOR_AND)
             .with_both_operands_as(LITERAL_TYPE_BOOL)
     ;
 
     api
         .operator_group("Or", LITERAL_TYPE_BOOL)
-            .operator("or", OPERATOR_OR)
+            .operator(OPERATOR_OR)
             .with_both_operands_as(LITERAL_TYPE_BOOL)
     ;
 

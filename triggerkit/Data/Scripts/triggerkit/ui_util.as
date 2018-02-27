@@ -21,6 +21,25 @@ string literal_type_to_ui_string(Literal_Type literal_type) {
     return literal_type_to_serializeable_string(literal_type);
 }
 
+string operator_type_to_ui_string(Operator_Type operator_type) {
+    switch (operator_type) {
+        case OPERATOR_AND: return "and";
+        case OPERATOR_OR: return "or";
+        case OPERATOR_EQ: return "is";
+        case OPERATOR_NEQ: return "is not";
+        case OPERATOR_GT: return "is greater than";
+        case OPERATOR_LT: return "is lesser than";
+        case OPERATOR_GE: return "is greater or equals to";
+        case OPERATOR_LE: return "is lesser or equals to";
+        case OPERATOR_ADD: return "+";
+        case OPERATOR_SUB: return "-";
+        case OPERATOR_DIV: return "/";
+        case OPERATOR_MUL: return "*";
+    }
+
+    return "undefined";
+}
+
 const string default_color = "\x1BFFFFFFFF";
 const string keyword_color = "\x1BFFD800FF";
 const string type_color = "\x1BB6FF00FF";
@@ -70,12 +89,12 @@ string literal_to_ui_string(Literal_Type literal_type, Memory_Cell@ value) {
     return "not_implemented";
 }
 
-string function_call_to_string_simple(Expression@ expression, Ui_Frame_State@ frame) {
+string function_call_to_string_simple(Expression@ expression) {
     array<string> arguments;
     arguments.resize(expression.arguments.length());
 
     for (uint argument_index = 0; argument_index < expression.arguments.length(); argument_index++) {
-        arguments[argument_index] = expression_to_string(expression.arguments[argument_index], frame);
+        arguments[argument_index] = expression_to_string(expression.arguments[argument_index]);
     }
 
     return expression.identifier_name + "(" + join(arguments, ", ") + ")";
@@ -184,11 +203,11 @@ Operator_Definition@ find_operator_definition_by_operator_type_and_operand_types
     return null;
 }
 
-string function_call_to_string(Expression@ expression, Ui_Frame_State@ frame) {
+string function_call_to_string(Expression@ expression) {
     Function_Definition@ function_definition = find_function_definition_by_function_name(expression.identifier_name);
 
     if (function_definition is null) {
-        return function_call_to_string_simple(expression, frame);
+        return function_call_to_string_simple(expression);
     }
 
     string result = "";
@@ -204,7 +223,7 @@ string function_call_to_string(Expression@ expression, Ui_Frame_State@ frame) {
             Expression@ argument_expression = expression.arguments[argument_index];
 
             if (argument_expression !is null) {
-                argument_as_string = expression_to_string(argument_expression, frame);
+                argument_as_string = expression_to_string(argument_expression);
 
                 if (argument_expression.type != EXPRESSION_LITERAL && argument_expression.type != EXPRESSION_IDENTIFIER) {
                     argument_as_string = "(" + argument_as_string + ")";
@@ -221,23 +240,17 @@ string function_call_to_string(Expression@ expression, Ui_Frame_State@ frame) {
     //return expression.identifier_name + "(" + join(arguments, ", ") + ")";
 }
 
-string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
+string expression_to_string(Expression@ expression) {
     if (expression is null) {
         return "<ERROR>";
     }
 
     switch (expression.type) {
         case EXPRESSION_OPERATOR: {
-            Operator_Definition@ operator_definition = find_operator_definition_by_expression_in_context(expression, frame.top_scope);
-
-            if (operator_definition is null) {
-                return expression_to_string(expression.left_operand, frame) + " " + expression.operator_type + " " + expression_to_string(expression.right_operand, frame);
-            }
-
             string result = join(array<string> = {
-                expression_to_string(expression.left_operand, frame),
-                colored_keyword(operator_definition.name),
-                expression_to_string(expression.right_operand, frame)
+                expression_to_string(expression.left_operand),
+                operator_type_to_ui_string(expression.operator_type),
+                expression_to_string(expression.right_operand)
             }, " ");
 
             //if (expression.left_operand.type == EXPRESSION_OPERATOR || expression.right_operand.type == EXPRESSION_OPERATOR) {
@@ -252,7 +265,7 @@ string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
                 colored_literal_type(expression.literal_type),
                 colored_identifier(expression.identifier_name),
                 "=",
-                expression_to_string(expression.value_expression, frame)
+                expression_to_string(expression.value_expression)
             }, " ");
         }
             
@@ -261,15 +274,15 @@ string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
                 colored_keyword("Set"),
                 colored_identifier(expression.identifier_name),
                 "=",
-                expression_to_string(expression.value_expression, frame)
+                expression_to_string(expression.value_expression)
             }, " ");
         case EXPRESSION_IDENTIFIER: return colored_identifier(expression.identifier_name);
         case EXPRESSION_LITERAL: return literal_to_ui_string(expression.literal_type, expression.literal_value);
-        case EXPRESSION_CALL: return function_call_to_string(expression, frame);
+        case EXPRESSION_CALL: return function_call_to_string(expression);
         case EXPRESSION_REPEAT: {
             return join(array<string> = {
                 colored_keyword("Repeat"),
-                expression_to_string(expression.value_expression, frame),
+                expression_to_string(expression.value_expression),
                 "times"
             }, " ");
         }
@@ -277,13 +290,13 @@ string expression_to_string(Expression@ expression, Ui_Frame_State@ frame) {
         case EXPRESSION_WHILE: {
             return join(array<string> = {
                 colored_keyword("While"),
-                expression_to_string(expression.value_expression, frame) + ", do"
+                expression_to_string(expression.value_expression) + ", do"
             }, " ");
         }
 
         case EXPRESSION_FORK: return colored_keyword("Run in parallel");
 
-        case EXPRESSION_IF: return colored_keyword("If ") + expression_to_string(expression.value_expression, frame);
+        case EXPRESSION_IF: return colored_keyword("If ") + expression_to_string(expression.value_expression);
     }
 
     return "not_implemented (" + expression.type + ")";

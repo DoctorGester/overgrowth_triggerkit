@@ -512,7 +512,7 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_edito
 }
 
 void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, bool parent_is_a_code_block = false, Literal_Type limit_to = LITERAL_TYPE_VOID) {
-    if (ImGui_Button(expression_to_string(expression, frame) + frame.unique_id("editable_button"))) {
+    if (ImGui_Button(expression_to_string(expression) + frame.unique_id("editable_button"))) {
         open_expression_editor_popup(expression, frame);
     }
 
@@ -716,9 +716,11 @@ void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@
             selected_operator = operator_index;
         }
 
-        operator_names.insertLast(colored_keyword(operator.name));
+        string operator_name = operator_type_to_ui_string(operator.operator_type);
+        
+        operator_names.insertLast(colored_keyword(operator_name));
 
-        int operator_name_width = int(ImGui_CalcTextSize(operator.name).x + 35);
+        int operator_name_width = int(ImGui_CalcTextSize(operator_name).x + 35);
         max_text_width = max(operator_name_width, max_text_width);
     }
 

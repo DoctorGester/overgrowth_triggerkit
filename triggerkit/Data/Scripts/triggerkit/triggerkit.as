@@ -5,9 +5,6 @@
 //  if we delete a variable/user function which is used in an operator we won't be able to infer a type
 //  from it and will fail to determine the operator. This can be prevented by somehow caching the expression type in
 //  the expression itself and falling back to that type if we failed to determine one.
-// An interesting point: we currently have an operator name in the operator definition, but since operators are just overloads
-//  of functions with the same name shouldn't that be tied to Operator_Type? This way we could still fall back and actually render
-//  operators in the top-level UI even if operand types can't be deduced
 
 // More dialogue functions
 // Exclude certain functions (like boolean comparisons) from the list of available actions
@@ -17,10 +14,7 @@
 //                         highlight them and exclude related triggers from compilation
 // Properly resize globals window when opened and resize global list to the size of the window
 // Fix some todos
-// Cameras for dialogues:
-//      Camera type: camera model and a camera panel which allows setting current view to camera and camera to view
-//      Parallel operation type
-//          Break expression, fix the return expression, user functions UI
+// Break expression, fix the return expression, user functions UI
 // Figure out another demo with proper dialogues
 // Make even more demos, abandon this one!
 // Varargs for string concatenation? We could combine them into an array and pass that easily
@@ -36,6 +30,21 @@
 //              a way to move the stack pointer without it
 // An interesting thing there: we could have a thread.join function which would wait until a thread ends
 // Fix setting default camera value when making a new camera literal
+// Dialogue milestones:
+//  Enums:
+//    Poses
+//    Camera interpolationg types
+//  Research how character positions get set in regular dialogues
+//  Enter dialogue skipping
+//  Figure out how to implement [wait .. 0.4] in our dialogues (maybe some special mode which doesn't trigger "click to proceed?")
+//  Implement Dialogue append string ([wait for click])
+//  New demo: Racing again. Notions:
+//      Use an existing map (that ice thingy from overgrowth campaign)
+//      UI: timer, countdown
+//      Sounds
+//      Map camera overview
+//      Record best runs
+//      Fade in/fade out
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"
@@ -168,7 +177,8 @@ void print_compilation_debug_info(Translation_Context@ ctx) {
             }
 
             if (function_id < ctx.operator_definitions.length()) {
-                text = colored_keyword(ctx.operator_definitions[function_id].name) + suffix_text;
+                string op_name = operator_type_to_serializeable_string(ctx.operator_definitions[function_id].operator_type);
+                text = colored_keyword(op_name) + suffix_text;
             }
         }
 

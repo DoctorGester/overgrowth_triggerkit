@@ -568,7 +568,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                         int operator_index = ctx.operator_definitions.find(operator_definition);
 
                         if (operator_index == -1) {
-                            Log(error, "Fatal error: operator " + operator_definition.name + " not found");
+                            Log(error, "Fatal error: operator " + operator_type_to_serializeable_string(expression.operator_type) + " not found");
                             return;
                         }
 
