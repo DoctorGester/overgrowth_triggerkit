@@ -14,16 +14,6 @@ namespace icons {
     TextureAssetRef action_camera = LoadTexture(icons_folder + "Actions-Camera.png", TextureLoadFlags_NoMipmap);
 }
 
-string literal_type_to_ui_string(Literal_Type literal_type) {
-    switch(literal_type) {
-        case LITERAL_TYPE_STRING: return "Text";
-        case LITERAL_TYPE_BOOL: return "Boolean";
-        case LITERAL_TYPE_VECTOR_3: return "Point";
-    }
-
-    return literal_type_to_serializeable_string(literal_type);
-}
-
 string operator_type_to_ui_string(Operator_Type operator_type) {
     switch (operator_type) {
         case OPERATOR_AND: return "and";
@@ -69,27 +59,6 @@ string colored_literal(string value) {
 string camera_id_to_camera_name(int camera_id) {
     Object@ camera_object = ReadObjectFromID(camera_id);
     return camera_object.GetName() + " (#" + camera_object.GetID() + ")";
-}
-
-string literal_to_ui_string(Literal_Type literal_type, Memory_Cell@ value) {
-    switch (literal_type) {
-        case LITERAL_TYPE_CAMERA: return colored_literal("<") + camera_id_to_camera_name(int(value.number_value)) + colored_literal(">");
-        case LITERAL_TYPE_NUMBER: return colored_literal(value.number_value + "");
-        case LITERAL_TYPE_STRING: return string_color + "\"" + value.string_value + "\"" + default_color;
-        case LITERAL_TYPE_BOOL: return colored_literal(number_to_bool(value.number_value) ? "True" : "False");
-        case LITERAL_TYPE_VECTOR_3:
-            return "Point(" + 
-                colored_literal(value.vec3_value.x + "") + ", " + 
-                colored_literal(value.vec3_value.y + "") + ", " + 
-                colored_literal(value.vec3_value.z + "") +
-            ")";
-
-        default: {
-            Log(error, "Unsupported literal type " + literal_type_to_ui_string(literal_type));
-        }
-    }
-
-    return "not_implemented";
 }
 
 string function_call_to_string_simple(Expression@ expression) {

@@ -142,30 +142,6 @@ array<string> split_into_words_and_quoted_pieces(string text) {
     return result;
 }
 
-Expression@ parse_literal_value_from_string(Literal_Type literal_type, Parser_State@ state) {
-    switch (literal_type) {
-        case LITERAL_TYPE_CAMERA:
-            return make_handle_lit(literal_type, parseInt(parser_next_word(state)));
-
-        case LITERAL_TYPE_NUMBER: return make_lit(parseFloat(parser_next_word(state)));
-        case LITERAL_TYPE_STRING: return make_lit(parser_next_word(state));
-        case LITERAL_TYPE_BOOL: return make_lit("True" == parser_next_word(state));
-        case LITERAL_TYPE_VECTOR_3: {
-            float x = parseFloat(parser_next_word(state));
-            float y = parseFloat(parser_next_word(state));
-            float z = parseFloat(parser_next_word(state));
-
-            return make_lit(vec3(x, y, z));
-        }
-
-        default: {
-            Log(error, "Unsupported literal type " + literal_type_to_serializeable_string(literal_type));
-        }
-    }
-
-    return null;
-}
-
 Expression@ parse_words_into_expression(Parser_State@ state) {
     string word = parser_next_word(state);
 

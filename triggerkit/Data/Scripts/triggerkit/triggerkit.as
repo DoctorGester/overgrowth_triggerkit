@@ -48,6 +48,7 @@
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"
+#include "triggerkit/types.as"
 #include "triggerkit/compiler.as"
 #include "triggerkit/parser.as"
 #include "triggerkit/persistence.as"

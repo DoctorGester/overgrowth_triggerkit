@@ -420,50 +420,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
     switch (expression.type) {
         case EXPRESSION_LITERAL: {
-            switch (expression.literal_type) {
-                case LITERAL_TYPE_CAMERA:
-                case LITERAL_TYPE_NUMBER: {
-                    float value = expression.literal_value.number_value;
-
-                    if (value == 0) {
-                        emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
-                    } else if (value == 1) {
-                        emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_1), target);
-                    } else {
-                        uint const_id = find_or_save_number_const(ctx, value);
-                        emit_instruction(make_load_const_instruction(const_id), target);
-                    }
-
-                    break;
-                }
-
-                case LITERAL_TYPE_STRING: {
-                    uint const_id = find_or_save_string_const(ctx, expression.literal_value.string_value);
-                    emit_instruction(make_load_const_instruction(const_id), target);
-
-                    break;
-                }
-
-                case LITERAL_TYPE_BOOL: {
-                    if (number_to_bool(expression.literal_value.number_value)) {
-                        emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_1), target);
-                    } else {
-                        emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
-                    }
-
-                    break;
-                }
-
-                case LITERAL_TYPE_VECTOR_3: {
-                    uint const_id = find_or_save_vec3_const(ctx, expression.literal_value.vec3_value);
-                    emit_instruction(make_load_const_instruction(const_id), target);
-                    break;
-                }
-
-                default: {
-                    Log(error, "Unhandled literal of type " + literal_type_to_ui_string(expression.literal_type));
-                }
-            }
+            emit_literal_bytecode(ctx, expression);
 
             break;
         }
