@@ -923,15 +923,16 @@ void draw_trigger_content(Trigger@ current_trigger) {
 }
 
 void draw_globals_modal() {
+    if (icon_button("New variable", "variable_add", icons::action_variable)) {
+        state.global_variables.insertLast(make_variable(LITERAL_TYPE_NUMBER, "New variable"));
+    }
+
     float window_width = ImGui_GetWindowWidth();
 
-    ImGui_PushItemWidth(int(window_width) - 16);
-
-    ImGui_ListBoxHeader("###global_list", 16, 8);
+    ImGui_ListBoxHeader("###global_list", size: vec2(-1, -1));
 
     float right_padding = 100;
-    float st = ImGui_GetCursorPosX();
-    float free_width = window_width - st - right_padding;
+    float free_width = window_width - right_padding;
 
     for (uint variable_index = 0; variable_index < state.global_variables.length(); variable_index++) {
         Variable@ variable = state.global_variables[variable_index];
@@ -988,11 +989,6 @@ void draw_globals_modal() {
     }
 
     ImGui_ListBoxFooter();
-    ImGui_PopItemWidth();
-
-    if (icon_button("New variable", "variable_add", icons::action_variable)) {
-        state.global_variables.insertLast(make_variable(LITERAL_TYPE_NUMBER, "New variable"));
-    }
 }
 
 void set_camera_to_view(Object@ camera_hotspot) {
@@ -1028,10 +1024,7 @@ array<Object@>@ list_camera_objects() {
 }
 
 void draw_cameras_window() {
-    float window_width = ImGui_GetWindowWidth();
-    ImGui_PushItemWidth(int(window_width) - 16);
-
-    ImGui_ListBoxHeader("###cameras_list", 16, 16);
+    ImGui_ListBoxHeader("###cameras_list", size: vec2(-1, ImGui_GetWindowHeight() - 160)); // -60 = 1 button exactly
 
     Object@ selected_hotspot_as_object = null;
 
@@ -1056,7 +1049,6 @@ void draw_cameras_window() {
     }
 
     ImGui_ListBoxFooter();
-    ImGui_PopItemWidth();
 
     if (icon_button("New camera", "camera_add", icons::action_camera)) {
         int camera_id = CreateObject("Data/Objects/triggerkit/trigger_camera.xml", false);
@@ -1070,6 +1062,11 @@ void draw_cameras_window() {
         camera_as_object.SetName("New camera");
         camera_as_object.SetSelectable(true);
         camera_as_object.SetSelected(true);
+        camera_as_object.SetCopyable(true);
+        camera_as_object.SetDeletable(true);
+        camera_as_object.SetScalable(true);
+        camera_as_object.SetTranslatable(true);
+        camera_as_object.SetRotatable(true);
 
         set_camera_to_view(camera_as_object);
     }
