@@ -154,25 +154,6 @@ Trigger_Kit_State@ load_trigger_state_from_level_params() {
     return state;
 }
 
-string operator_type_to_serializeable_string(Operator_Type operator_type) {
-    switch (operator_type) {
-        case OPERATOR_AND: return "and";
-        case OPERATOR_OR: return "or";
-        case OPERATOR_EQ: return "=";
-        case OPERATOR_NEQ: return "~";
-        case OPERATOR_GT: return ">";
-        case OPERATOR_LT: return "<";
-        case OPERATOR_ADD: return "+";
-        case OPERATOR_SUB: return "-";
-        case OPERATOR_DIV: return "/";
-        case OPERATOR_MUL: return "*";
-        case OPERATOR_GE: return ">=";
-        case OPERATOR_LE: return "<=";
-    }
-
-    return "undefined";
-}
-
 string serializeable_string(string text) {
     const uint8 double_quote = "\""[0];
 

@@ -493,6 +493,15 @@ Api_Builder@ build_api() {
         .takes(LITERAL_TYPE_NUMBER);
 
     api
+        .func("transition_camera_2", api::transition_camera)
+        .fmt("Move camera from {} to {} over {} seconds with {} interpolation")
+        .category(CATEGORY_CAMERA)
+        .takes(LITERAL_TYPE_CAMERA)
+        .takes(LITERAL_TYPE_CAMERA)
+        .takes(LITERAL_TYPE_NUMBER)
+        .takes(LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE);
+
+    api
         .func("end_dialogue", api::end_dialogue)
         .fmt("Hide dialogue screen");
 

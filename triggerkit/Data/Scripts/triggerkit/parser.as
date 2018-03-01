@@ -35,45 +35,6 @@ const string KEYWORD_RETURN = "return";
 const string KEYWORD_START_BLOCK = "(";
 const string KEYWORD_END_BLOCK = ")";
 
-// TODO Performance!
-Event_Type serializeable_string_to_event_type(string text) {
-    for (uint type_as_int = 0; type_as_int < EVENT_LAST; type_as_int++) {
-        if (event_type_to_serializeable_string(Event_Type(type_as_int)) == text) {
-            return Event_Type(type_as_int);
-        }
-    }
-
-    Log(error, "Can't deserialize " + text + " to event type");
-
-    return EVENT_LAST;
-}
-
-// TODO Performance!
-Operator_Type serializeable_string_to_operator_type(string text) {
-    for (uint type_as_int = 0; type_as_int < OPERATOR_LAST; type_as_int++) {
-        if (operator_type_to_serializeable_string(Operator_Type(type_as_int)) == text) {
-            return Operator_Type(type_as_int);
-        }
-    }
-
-    Log(error, "Can't deserialize " + text + " to operator type");
-
-    return OPERATOR_LAST;
-}
-
-// TODO Performance!
-Literal_Type serializeable_string_to_literal_type(string text) {
-    for (uint type_as_int = 0; type_as_int < LITERAL_TYPE_LAST; type_as_int++) {
-        if (literal_type_to_serializeable_string(Literal_Type(type_as_int)) == text) {
-            return Literal_Type(type_as_int);
-        }
-    }
-
-    Log(error, "Can't deserialize " + text + " to literal type");
-
-    return LITERAL_TYPE_LAST;
-}
-
 // Does not support strings starting with a space, does it need to?
 array<string> split_into_words_and_quoted_pieces(string text) {
     array<string> result;

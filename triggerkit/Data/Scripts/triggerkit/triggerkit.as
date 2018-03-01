@@ -12,7 +12,6 @@
 // Serialization format versioning
 // Proper error reporting: compiler goes through the whole thing and gives a list of Compiler_Error which have direct links to Expression@ instances, 
 //                         highlight them and exclude related triggers from compilation
-// Properly resize globals window when opened and resize global list to the size of the window
 // Fix some todos
 // Break expression, fix the return expression, user functions UI
 // Figure out another demo with proper dialogues
@@ -20,6 +19,7 @@
 // Varargs for string concatenation? We could combine them into an array and pass that easily
 // Function categories
 // Minimum size for both action editor and globals window
+// We WILL need expressions or some kind of parameter selection in events, example: Every X seconds
 
 // UI: User functions!
 // Compiler: Actual function types so we could get rid of EXPRESSION_FORK and the whole strapped on event architecture
@@ -30,10 +30,13 @@
 //              a way to move the stack pointer without it
 // An interesting thing there: we could have a thread.join function which would wait until a thread ends
 // Fix setting default camera value when making a new camera literal
+// We could somehow signify that a parameter is an enum value and allow selecting it in-place
+//  This gets rid of useless (?) function/variable selectors
+// We desperately need newlines in action dialogue
 // Dialogue milestones:
 //  Enums:
 //    Poses
-//    Camera interpolationg types
+//    Camera interpolation types
 //  Research how character positions get set in regular dialogues
 //  Enter dialogue skipping
 //  Figure out how to implement [wait .. 0.4] in our dialogues (maybe some special mode which doesn't trigger "click to proceed?")
@@ -58,6 +61,7 @@
 
 Virtual_Machine@ vm;
 Trigger_Kit_State@ state;
+Enums@ enums;
 
 double get_time_delta_in_ms(uint64 start) {
     return double((GetPerformanceCounter() - start)*1000) / GetPerformanceFrequency();
@@ -275,8 +279,7 @@ void compile_everything() {
 }
 
 void Init(string p_level_name) {
-    initialize_state_and_vm();
-    compile_everything();
+    PostScriptReload();
 
     level.SendMessage(event_type_to_serializeable_string(EVENT_LEVEL_START));
 }
@@ -454,6 +457,9 @@ void Update(int paused) {
 }
 
 void PostScriptReload() {
+    @enums = Enums();
+
+    fill_enums(enums);
     initialize_state_and_vm();
     compile_everything();
 }
@@ -461,6 +467,7 @@ void PostScriptReload() {
 void PreScriptReload() {
     @state = null;
     @vm = null;
+    @enums = null;
 }
 
 void SetWindowDimensions(int w, int h) {
@@ -491,6 +498,15 @@ Expression@ make_handle_lit(Literal_Type literal_type, int handle_id) {
     expression.type = EXPRESSION_LITERAL;
     expression.literal_type = literal_type;
     expression.literal_value.number_value = handle_id;
+
+    return expression;
+}
+
+Expression@ make_enum_lit(Literal_Type literal_type, uint enum_value) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = literal_type;
+    expression.literal_value.number_value = enum_value;
 
     return expression;
 }

@@ -33,24 +33,6 @@ enum Operator_Type {
     OPERATOR_LAST
 }
 
-enum Literal_Type {
-    LITERAL_TYPE_VOID,
-    LITERAL_TYPE_NUMBER,
-    LITERAL_TYPE_STRING,
-    LITERAL_TYPE_BOOL,
-    LITERAL_TYPE_VECTOR_3,
-    LITERAL_TYPE_CAMERA,
-
-    // Not implemented
-    LITERAL_TYPE_OBJECT,
-    LITERAL_TYPE_ITEM,
-    LITERAL_TYPE_HOTSPOT,
-    LITERAL_TYPE_CHARACTER,
-    LITERAL_TYPE_FUNCTION,
-    LITERAL_TYPE_ARRAY,
-    LITERAL_TYPE_LAST
-}
-
 class Expression {
     Expression_Type type;
 
