@@ -273,11 +273,11 @@ void parse_parameters_for_event_type(Event_Type event_type, Parser_State@ parser
             string character_id_as_string = parser_next_word(parser_state);
             string hotspot_id_as_string = parser_next_word(parser_state);
 
-            string character_name = ReadObjectFromID(atoi(character_id_as_string)).GetName();
-            string region_name = ReadObjectFromID(atoi(hotspot_id_as_string)).GetName();
+            int character_id = atoi(character_id_as_string);
+            int region_id = atoi(hotspot_id_as_string);
 
-            parameters.insertLast(make_memory_cell(character_name));
-            parameters.insertLast(make_memory_cell(region_name));
+            parameters.insertLast(make_memory_cell(character_id));
+            parameters.insertLast(make_memory_cell(region_id));
 
             break;
         }
@@ -321,8 +321,8 @@ Api_Builder@ build_api() {
     api
         .event(EVENT_CHARACTER_ENTERS_REGION)
         .list_name("Character enters a region")
-        .defines("Entering Character", LITERAL_TYPE_STRING)
-        .defines("Region being entered", LITERAL_TYPE_STRING);
+        .defines("Entering Character", LITERAL_TYPE_CHARACTER)
+        .defines("Region being entered", LITERAL_TYPE_REGION);
 
     api
         .operator_group("Arithmetics", LITERAL_TYPE_NUMBER)
@@ -410,6 +410,9 @@ Api_Builder@ build_api() {
             .with_both_operands_as(LITERAL_TYPE_STRING)
             .as_native_executor(operators::concatenate_strings)
     ;
+
+    define_handle_comparison_operators(api, "Character comparison", LITERAL_TYPE_CHARACTER);
+    define_handle_comparison_operators(api, "Region comparison", LITERAL_TYPE_REGION);
 
     api
         .operator_group("And", LITERAL_TYPE_BOOL)
@@ -511,6 +514,7 @@ Api_Builder@ build_api() {
 
     api
         .func("is_in_dialogue", api::is_in_dialogue)
+        .returns(LITERAL_TYPE_BOOL)
         .fmt("Is waiting for a dialogue line to end");
 
     api
@@ -553,6 +557,20 @@ Api_Builder@ build_api() {
     return api;
 }
 
+void define_handle_comparison_operators(Api_Builder@ api, string group_name, Literal_Type handle_type) {
+    api
+        .operator_group(group_name, LITERAL_TYPE_BOOL)
+            .operator(OPERATOR_EQ)
+            .with_both_operands_as(handle_type)
+            .as_native_executor(operators::are_handles_equal)
+
+            .operator(OPERATOR_NEQ)
+            .with_both_operands_as(handle_type)
+            .as_native_executor(operators::are_handles_equal)
+            .invert_result()
+    ;
+}
+
 namespace environment {
     enum Camera_Mode {
         CAMERA_MODE_NONE,
@@ -565,6 +583,7 @@ namespace environment {
     int current_static_camera = 0;
     Camera_Mode current_camera_mode = CAMERA_MODE_NONE;
 
+    Interpolation_Type camera_interpolation_type;
     int camera_travelling_from;
     int camera_travelling_to;
     float camera_travel_time;
@@ -610,7 +629,9 @@ namespace environment {
                 case CAMERA_MODE_TRAVELLING: {
                     float travel_progress = min(1.0f - (camera_travel_should_finish_at - the_time) / camera_travel_time, 1.0f);
 
-                    travel_progress = ease_out_circular(travel_progress);
+                    if (camera_interpolation_type == INTERPOLATION_EASE_OUT_CIRCULAR) {
+                        travel_progress = ease_out_circular(travel_progress);
+                    }
 
                     Log(info, (travel_progress) + "");
 
@@ -671,6 +692,10 @@ namespace operators {
 
     void are_strings_equal(Native_Call_Context@ ctx) {
         ctx.return_bool(ctx.take_string() == ctx.take_string());
+    }
+
+    void are_handles_equal(Native_Call_Context@ ctx) {
+        ctx.return_bool(ctx.take_handle_id() == ctx.take_handle_id());
     }
 }
 
@@ -747,6 +772,7 @@ namespace api {
         environment::camera_travelling_to = ctx.take_handle_id();
         environment::camera_travel_time = ctx.take_number();
         environment::camera_travel_should_finish_at = the_time + environment::camera_travel_time;
+        environment::camera_interpolation_type = Interpolation_Type(ctx.take_enum_value());
     }
 
     // TODO maybe we could actually use this

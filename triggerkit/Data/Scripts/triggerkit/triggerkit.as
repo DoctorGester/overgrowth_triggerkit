@@ -20,6 +20,7 @@
 // Function categories
 // Minimum size for both action editor and globals window
 // We WILL need expressions or some kind of parameter selection in events, example: Every X seconds
+//  Alternatively Every X seconds can be easily implemented with while (true) wait
 
 // UI: User functions!
 // Compiler: Actual function types so we could get rid of EXPRESSION_FORK and the whole strapped on event architecture
@@ -48,6 +49,9 @@
 //      Map camera overview
 //      Record best runs
 //      Fade in/fade out
+//      Checkpoints
+//      Maybe we could have something like have actual race contestants? I dunno
+// BUG: when adding a new condition default operator value is not filled at all (because we set it to do_nothing)
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"

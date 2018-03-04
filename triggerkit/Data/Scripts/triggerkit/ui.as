@@ -307,15 +307,11 @@ void draw_editor_popup_function_selector(Expression@ expression, Ui_Frame_State@
         if (selected_expression < functions_offset) {
             Operator_Definition@ first_operator = operator_groups[selected_expression].operators[0];
 
-            expression.type = EXPRESSION_OPERATOR;
-
-            fill_operator_expression_from_operator_definition(expression, first_operator);
+            fill_operator_expression_from_operator_definition(expression, first_operator, frame.top_scope);
         } else {
             Function_Definition@ selected_definition = source_functions[selected_expression - functions_offset];
 
-            expression.type = EXPRESSION_CALL;
-
-            fill_function_call_expression_from_function_definition(expression, selected_definition);
+            fill_function_call_expression_from_function_definition(expression, selected_definition, frame.top_scope);
         }
     }
 }
@@ -395,11 +391,9 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
 
             handle_expression_type_changed_to(special_type, expression);
         } else {
-            expression.type = EXPRESSION_CALL;
-
             Function_Definition@ selected_definition = source_functions[selected_action - functions_offset];
 
-            fill_function_call_expression_from_function_definition(expression, selected_definition);
+            fill_function_call_expression_from_function_definition(expression, selected_definition, frame.top_scope);
         }
     }
 
@@ -472,12 +466,10 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_edito
     bool is_an_operator = expression.type == EXPRESSION_OPERATOR;
 
     if (ImGui_RadioButton("Function", is_a_function_call || is_an_operator)) {
-        expression.type = EXPRESSION_OPERATOR;
-
         // TODO this is not a good way to set a default value
         array<Operator_Group@>@ operator_groups = filter_operator_groups_by_return_type(limit_to);
 
-        fill_operator_expression_from_operator_definition(expression, operator_groups[0].operators[0]);
+        fill_operator_expression_from_operator_definition(expression, operator_groups[0].operators[0], frame.top_scope);
     }
 
     ImGui_SameLine();
@@ -628,6 +620,19 @@ void draw_function_call_as_broken_into_pieces(Expression@ expression, Ui_Frame_S
 
 void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@ frame) {
     Operator_Definition@ fitting_operator = find_operator_definition_by_expression_in_context(expression, frame.top_scope);
+
+    if (fitting_operator is null) {
+        ImGui_Text(expression_to_string(expression.left_operand));
+        ImGui_SameLine();
+
+        ImGui_Text(operator_type_to_ui_string(expression.operator_type));
+        ImGui_SameLine();
+
+        ImGui_Text(expression_to_string(expression.right_operand));
+
+        return;
+    }
+
     Operator_Group@ operator_group = fitting_operator.parent_group;
 
     array<string> operator_names;
@@ -1005,22 +1010,6 @@ void set_camera_to_view(Object@ camera_hotspot) {
     quaternion rotation = QuaternionFromMat4(rotation_matrix_y * rotation_matrix_x);
 
     camera_hotspot.SetRotation(rotation);
-}
-
-array<Object@>@ list_camera_objects() {
-    array<Object@> result;
-
-    int amount_of_hotspots = GetNumHotspots();
-
-    for (int hotspot_index = 0; hotspot_index < amount_of_hotspots; hotspot_index++) {
-        Hotspot@ hotspot = ReadHotspot(hotspot_index);
-
-        if (hotspot.GetTypeString() == HOTSPOT_CAMERA_TYPE) {
-            result.insertLast(ReadObjectFromID(hotspot.GetID()));
-        }
-    }
-
-    return result;
 }
 
 void draw_cameras_window() {

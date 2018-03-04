@@ -19,5 +19,9 @@ void HandleEvent(string event, MovementObject @mo){
 void Update() {
 }
 
+string GetTypeString() {
+  return HOTSPOT_REGION_TYPE;
+}
+
 void DrawEditor(){
 }

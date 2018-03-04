@@ -5,13 +5,13 @@ enum Literal_Type {
     LITERAL_TYPE_BOOL,
     LITERAL_TYPE_VECTOR_3,
     LITERAL_TYPE_CAMERA,
+    LITERAL_TYPE_CHARACTER,
     LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE,
+    LITERAL_TYPE_REGION,
 
     // Not implemented
     LITERAL_TYPE_OBJECT,
     LITERAL_TYPE_ITEM,
-    LITERAL_TYPE_HOTSPOT,
-    LITERAL_TYPE_CHARACTER,
     LITERAL_TYPE_FUNCTION,
     LITERAL_TYPE_ARRAY,
     LITERAL_TYPE_LAST
@@ -52,6 +52,8 @@ class Enum {
     }
 }
 
+funcdef string Name_Resolver(int handle_id); 
+
 void fill_enums(Enums@ target) {
     @target.serializeable_literal_type = fill_serializeable_literal_types_enum();
     @target.serializeable_interpolation_type = fill_serializeable_interpolation_types_enum();
@@ -67,7 +69,7 @@ Enum@ fill_serializeable_literal_types_enum() {
     e.value(LITERAL_TYPE_BOOL, "Bool");
     e.value(LITERAL_TYPE_OBJECT, "Object");
     e.value(LITERAL_TYPE_ITEM, "Item");
-    e.value(LITERAL_TYPE_HOTSPOT, "Hotspot");
+    e.value(LITERAL_TYPE_REGION, "Region");
     e.value(LITERAL_TYPE_CHARACTER, "Character");
     e.value(LITERAL_TYPE_VECTOR_3, "Vector3");
     e.value(LITERAL_TYPE_FUNCTION, "Function");
@@ -108,6 +110,9 @@ Enum@ fill_serializeable_interpolation_types_enum() {
 
 string literal_to_serializeable_string(Literal_Type literal_type, Memory_Cell@ literal_value) {
     switch (literal_type) {
+        // Enums and reference types go there
+        case LITERAL_TYPE_CHARACTER:
+        case LITERAL_TYPE_REGION:
         case LITERAL_TYPE_CAMERA:
         case LITERAL_TYPE_NUMBER:
             return literal_value.number_value + "";
@@ -140,13 +145,14 @@ string literal_type_to_ui_string(Literal_Type literal_type) {
 
 string literal_to_ui_string(Literal_Type literal_type, Memory_Cell@ value) {
     switch (literal_type) {
+        case LITERAL_TYPE_REGION: return colored_literal("<") + region_id_to_region_name(int(value.number_value)) + colored_literal(">");
+        case LITERAL_TYPE_CHARACTER: return colored_literal("<") + object_id_to_object_name(int(value.number_value)) + colored_literal(">");
         case LITERAL_TYPE_CAMERA: return colored_literal("<") + camera_id_to_camera_name(int(value.number_value)) + colored_literal(">");
         case LITERAL_TYPE_NUMBER: return colored_literal(value.number_value + "");
         case LITERAL_TYPE_STRING: return string_color + "\"" + value.string_value + "\"" + default_color;
         case LITERAL_TYPE_BOOL: return colored_literal(number_to_bool(value.number_value) ? "True" : "False");
         case LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE: {
-            string name = interpolation_type_to_serializeable_string(Interpolation_Type(value.number_value));
-            return colored_literal(name);
+            return colored_literal(interpolation_type_to_ui_string(Interpolation_Type(value.number_value)));
         }
 
         case LITERAL_TYPE_VECTOR_3:
@@ -168,7 +174,10 @@ void emit_literal_bytecode(Translation_Context@ ctx, Expression@ expression) {
     array<Instruction>@ target = ctx.code;
 
     switch (expression.literal_type) {
+        // Enums and reference types go there
         case LITERAL_TYPE_CAMERA:
+        case LITERAL_TYPE_CHARACTER:
+        case LITERAL_TYPE_REGION:
         case LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE:
         case LITERAL_TYPE_NUMBER: {
             float value = expression.literal_value.number_value;
@@ -216,7 +225,9 @@ void emit_literal_bytecode(Translation_Context@ ctx, Expression@ expression) {
 
 Expression@ parse_literal_value_from_string(Literal_Type literal_type, Parser_State@ state) {
     switch (literal_type) {
+        case LITERAL_TYPE_CHARACTER:
         case LITERAL_TYPE_CAMERA:
+        case LITERAL_TYPE_REGION:
             return make_handle_lit(literal_type, parseInt(parser_next_word(state)));
 
         case LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE:
@@ -239,6 +250,30 @@ Expression@ parse_literal_value_from_string(Literal_Type literal_type, Parser_St
     }
 
     return null;
+}
+
+bool draw_handle_editor(Name_Resolver@ name_resolver, array<Object@>@ handles, Memory_Cell@ literal_value, string unique_id) {
+    array<string> handle_names;
+
+    int selected_handle = -1;
+
+    for (uint handle_index = 0; handle_index < handles.length(); handle_index++) {
+        Object@ handle_object = handles[handle_index];
+
+        // TODO a tad inefficient, could make a separate function which makes a name out of an object
+        handle_names.insertLast(name_resolver(handle_object.GetID()));
+
+        if (handle_object.GetID() == int(literal_value.number_value)) {
+            selected_handle = handle_index;
+        }
+    }
+
+    if (ImGui_Combo(unique_id, selected_handle, handle_names)) {
+        literal_value.number_value = handles[selected_handle].GetID();
+        return true;
+    }
+
+    return false;
 }
 
 bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value, string unique_id) {
@@ -269,36 +304,32 @@ bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
         }
 
         case LITERAL_TYPE_CAMERA: {
-            array<Object@>@ camera_objects = list_camera_objects();
-            array<string> camera_names;
+            return draw_handle_editor(camera_id_to_camera_name, list_camera_objects(), literal_value, unique_id);
+        }
 
-            int selected_camera = -1;
+        case LITERAL_TYPE_REGION: {
+            return draw_handle_editor(region_id_to_region_name, list_region_objects(), literal_value, unique_id);
+        }
 
-            for (uint camera_index = 0; camera_index < camera_objects.length(); camera_index++) {
-                Object@ camera_object = camera_objects[camera_index];
-
-                // TODO a tad inefficient, could make a separate function which makes a name out of an object
-                camera_names.insertLast(camera_id_to_camera_name(camera_object.GetID()));
-
-                if (camera_object.GetID() == int(literal_value.number_value)) {
-                    selected_camera = camera_index;
-                }
-            }
-
-            if (ImGui_Combo(unique_id, selected_camera, camera_names)) {
-                literal_value.number_value = camera_objects[selected_camera].GetID();
-                return true;
-            }
-
-            return false;
+        case LITERAL_TYPE_CHARACTER: {
+            return draw_handle_editor(object_id_to_object_name, list_character_objects(), literal_value, unique_id);
         }
 
         case LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE: {
-            // TODO we need interpolation_type_to_ui_string
-            array<string> data = { "Linear", "Ease out circular" };
-            int selected_type = int(literal_value.number_value);
+            array<string> type_names;
+            type_names.resize(INTERPOLATION_LAST);
 
-            if (ImGui_Combo(unique_id, selected_type, data)) {
+            int selected_type = -1;
+
+            for (uint type_as_int = 0; type_as_int < INTERPOLATION_LAST; type_as_int++) {
+                type_names[type_as_int] = interpolation_type_to_ui_string(Interpolation_Type(type_as_int));
+
+                if (uint(literal_value.number_value) == type_as_int) {
+                    selected_type = type_as_int;
+                }
+            }
+
+            if (ImGui_Combo(unique_id, selected_type, type_names)) {
                 literal_value.number_value = selected_type;
                 return true;
             }
@@ -312,12 +343,6 @@ bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
         case LITERAL_TYPE_ITEM:
             ImGui_Text("Item input here");
             break;
-        case LITERAL_TYPE_HOTSPOT:
-            ImGui_Text("Hotspot input here");
-            break;
-        case LITERAL_TYPE_CHARACTER:
-            ImGui_Text("Character input here");
-            break;
         case LITERAL_TYPE_VECTOR_3:
             return ImGui_InputFloat3(unique_id, literal_value.vec3_value, 2);
         case LITERAL_TYPE_ARRAY:
@@ -326,6 +351,48 @@ bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
     }
 
     return false;
+}
+
+void fill_default_handle_id_if_available(Expression@ literal, array<Object@>@ handles) {
+    if (handles.length() > 0) {
+        literal.literal_value.number_value = handles[0].GetID();
+    } else {
+        literal.literal_value.number_value = -1;
+    }
+}
+
+Expression@ make_default_literal(Literal_Type literal_type) {
+    Expression expression;
+    expression.type = EXPRESSION_LITERAL;
+    expression.literal_type = literal_type;
+
+    switch (literal_type) {
+        case LITERAL_TYPE_CAMERA: {
+            fill_default_handle_id_if_available(expression, list_camera_objects());
+            break;
+        }
+
+        case LITERAL_TYPE_CHARACTER: {
+            fill_default_handle_id_if_available(expression, list_character_objects());
+            break;
+        }
+
+        case LITERAL_TYPE_REGION: {
+            fill_default_handle_id_if_available(expression, list_region_objects());
+            break;
+        }
+    }
+
+    return expression;
+}
+
+string interpolation_type_to_ui_string(Interpolation_Type interpolation_type) {
+    switch (interpolation_type) {
+        case INTERPOLATION_LINEAR: return "Linear";
+        case INTERPOLATION_EASE_OUT_CIRCULAR: return "Ease out circular";
+    }
+
+    return "unknown";
 }
 
 string literal_type_to_serializeable_string(Literal_Type literal_type) {

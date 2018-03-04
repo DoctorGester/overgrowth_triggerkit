@@ -57,8 +57,85 @@ string colored_literal(string value) {
 }
 
 string camera_id_to_camera_name(int camera_id) {
+    if (!ObjectExists(camera_id)) {
+        return "None";
+    }
+
     Object@ camera_object = ReadObjectFromID(camera_id);
-    return camera_object.GetName() + " (#" + camera_object.GetID() + ")";
+    return camera_object.GetName() + " (#" + camera_id + ")";
+}
+
+string region_id_to_region_name(int region_id) {
+    if (!ObjectExists(region_id)) {
+        return "None";
+    }
+
+    Object@ region_object = ReadObjectFromID(region_id);
+    string region_name = region_object.GetName();
+
+    if (region_name.isEmpty()) {
+        return "Region #" + region_id;
+    }
+
+    return region_name;
+}
+
+// TODO this function name is a bit ambigious, we really rely that this is a Character object
+string object_id_to_object_name(int object_id) {
+    Object@ object = ReadObjectFromID(object_id);
+    string object_name = object.GetName();
+
+    if (object_name.isEmpty()) {
+        string character_path = ReadCharacterID(object_id).char_path;
+        int last_slash_index = character_path.findLast("/");
+
+        if (last_slash_index != -1) {
+            character_path = character_path.substr(last_slash_index + 1);
+        }
+
+        return character_path + " (#" + object_id + ")";
+    }
+
+    return object_name;
+}
+
+array<Object@>@ list_objects_by_type_string(string type_string) {
+    array<Object@> result;
+
+    int amount_of_hotspots = GetNumHotspots();
+
+    for (int hotspot_index = 0; hotspot_index < amount_of_hotspots; hotspot_index++) {
+        Hotspot@ hotspot = ReadHotspot(hotspot_index);
+
+        if (hotspot.GetTypeString() == type_string) {
+            result.insertLast(ReadObjectFromID(hotspot.GetID()));
+        }
+    }
+
+    return result;
+}
+
+array<Object@>@ list_camera_objects() {
+    return list_objects_by_type_string(HOTSPOT_CAMERA_TYPE);
+}
+
+array<Object@>@ list_region_objects() {
+    return list_objects_by_type_string(HOTSPOT_REGION_TYPE);
+}
+
+array<Object@>@ list_character_objects() {
+    array<int> character_ids;
+
+    GetCharacters(character_ids);
+
+    array<Object@> result;
+
+    for (uint id_index = 0; id_index < character_ids.length(); id_index++) {
+        // TODO gotta check if the object is deleted
+        result.insertLast(ReadObjectFromID(character_ids[id_index]));
+    }
+
+    return result;
 }
 
 string function_call_to_string_simple(Expression@ expression) {
@@ -366,21 +443,49 @@ void draw_expression_image(Expression@ expression) {
     ImGui_SetCursorPosY(ImGui_GetCursorPosY() - 1);
 }
 
-void fill_function_call_expression_from_function_definition(Expression@ expression, Function_Definition@ function_definition) {
+// TODO do we really want left_operand and right_operand at all?
+array<Expression@>@ get_expression_arguments_as_array(Expression@ expression) {
+    return expression.type == EXPRESSION_OPERATOR ?
+            array<Expression@> = { expression.left_operand, expression.right_operand } :
+            expression.arguments;
+}
+
+Expression@ previous_argument_or_default(Literal_Type argument_type, array<Expression@>@ previous_arguments, uint argument_index, Variable_Scope@ variable_scope) {
+    if (argument_index < previous_arguments.length()) {
+        Expression@ old_argument = previous_arguments[argument_index];
+        Literal_Type old_argument_type = determine_expression_literal_type(old_argument, variable_scope);
+
+        if (old_argument_type == argument_type) {
+            return old_argument;
+        }
+    }
+
+    return make_default_literal(argument_type);
+}
+
+void fill_function_call_expression_from_function_definition(Expression@ expression, Function_Definition@ function_definition, Variable_Scope@ variable_scope) {
+    array<Expression@>@ previous_arguments = get_expression_arguments_as_array(expression);
+
     expression.identifier_name = function_definition.function_name;
     expression.arguments.resize(function_definition.argument_types.length());
 
     for (uint argument_index = 0; argument_index < function_definition.argument_types.length(); argument_index++) {
         Literal_Type argument_type = function_definition.argument_types[argument_index];
 
-        @expression.arguments[argument_index] = make_empty_lit(argument_type);
+        @expression.arguments[argument_index] = previous_argument_or_default(argument_type, previous_arguments, argument_index, variable_scope);
     }
+
+    expression.type = EXPRESSION_CALL;
 }
 
-void fill_operator_expression_from_operator_definition(Expression@ expression, Operator_Definition@ operator_definition) {
+void fill_operator_expression_from_operator_definition(Expression@ expression, Operator_Definition@ operator_definition, Variable_Scope@ variable_scope) {
+    array<Expression@>@ previous_arguments = get_expression_arguments_as_array(expression);
+
     expression.operator_type = operator_definition.operator_type;
-    @expression.left_operand = make_empty_lit(operator_definition.left_operand_type);
-    @expression.right_operand = make_empty_lit(operator_definition.right_operand_type);
+    @expression.left_operand = previous_argument_or_default(operator_definition.left_operand_type, previous_arguments, 0, variable_scope);
+    @expression.right_operand = previous_argument_or_default(operator_definition.right_operand_type, previous_arguments, 1, variable_scope);
+
+    expression.type = EXPRESSION_OPERATOR;
 }
 
 string get_function_name_for_list(Function_Definition@ function_definition) {
