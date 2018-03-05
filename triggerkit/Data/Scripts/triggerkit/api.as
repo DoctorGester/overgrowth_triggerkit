@@ -488,12 +488,26 @@ Api_Builder@ build_api() {
         .takes(LITERAL_TYPE_CAMERA);
 
     api
+        .func("set_character_animation", api::set_character_animation)
+        .fmt("Set {}'s animation to {}")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER)
+        .takes(LITERAL_TYPE_STRING);
+
+    api
+        .func("add_character_to_dialogue", api::add_character_to_dialogue)
+        .fmt("Add {} to current dialogue")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER);
+
+    api
         .func("transition_camera", api::transition_camera)
         .fmt("Move camera from {} to {} over {} seconds")
         .category(CATEGORY_CAMERA)
         .takes(LITERAL_TYPE_CAMERA)
         .takes(LITERAL_TYPE_CAMERA)
-        .takes(LITERAL_TYPE_NUMBER);
+        .takes(LITERAL_TYPE_NUMBER)
+        .takes(LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE);
 
     api
         .func("transition_camera_2", api::transition_camera)
@@ -503,10 +517,6 @@ Api_Builder@ build_api() {
         .takes(LITERAL_TYPE_CAMERA)
         .takes(LITERAL_TYPE_NUMBER)
         .takes(LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE);
-
-    api
-        .func("end_dialogue", api::end_dialogue)
-        .fmt("Hide dialogue screen");
 
     api
         .func("end_dialogue", api::end_dialogue)
@@ -589,6 +599,8 @@ namespace environment {
     float camera_travel_time;
     float camera_travel_should_finish_at;
 
+    array<int> dialogue_participants;
+
     void set_camera_location_and_rotation(vec3 position, quaternion rotation) {
         const float MPI = 3.14159265359;
 
@@ -632,8 +644,6 @@ namespace environment {
                     if (camera_interpolation_type == INTERPOLATION_EASE_OUT_CIRCULAR) {
                         travel_progress = ease_out_circular(travel_progress);
                     }
-
-                    Log(info, (travel_progress) + "");
 
                     Object@ camera_from = ReadObjectFromID(camera_travelling_from);
                     Object@ camera_to = ReadObjectFromID(camera_travelling_to);
@@ -719,13 +729,27 @@ namespace api {
     }
 
     void start_dialogue(Native_Call_Context@ ctx) {
+        // TODO warning if is already in it
+
         environment::is_in_dialogue_mode = true;
 
         dialogue::reset_ui();
     }
 
     void end_dialogue(Native_Call_Context@ ctx) {
+        // TODO warning if not in it
+
         environment::is_in_dialogue_mode = false;
+
+        for (uint participant_index = 0; participant_index < environment::dialogue_participants.length(); participant_index++) {
+            int participant_id = environment::dialogue_participants[participant_index];
+
+            if (MovementObjectExists(participant_id)) {
+                ReadCharacterID(participant_id).ReceiveScriptMessage("set_dialogue_control false");
+            }
+        }
+
+        environment::dialogue_participants.resize(0);
     }
 
     void is_in_dialogue(Native_Call_Context@ ctx) {
@@ -751,6 +775,8 @@ namespace api {
     }
 
     void take_camera_control(Native_Call_Context@ ctx) {
+        // TODO warning if already has it
+
         if (!environment::has_camera_control) {
             environment::current_camera_mode = environment::CAMERA_MODE_NONE;
             environment::has_camera_control = true;
@@ -758,15 +784,18 @@ namespace api {
     }
 
     void release_camera_control(Native_Call_Context@ ctx) {
+        // TODO warning if has no camera control
         environment::has_camera_control = false;
     }
 
     void set_current_camera(Native_Call_Context@ ctx) {
+        // TODO warning if has no camera control
         environment::current_camera_mode = environment::CAMERA_MODE_STATIC;
         environment::current_static_camera = ctx.take_handle_id();
     }
 
     void transition_camera(Native_Call_Context@ ctx) {
+        // TODO warning if has no camera control
         environment::current_camera_mode = environment::CAMERA_MODE_TRAVELLING;
         environment::camera_travelling_from = ctx.take_handle_id();
         environment::camera_travelling_to = ctx.take_handle_id();
@@ -784,7 +813,46 @@ namespace api {
         environment::camera_look_at = look_at;*/
     }
 
+    void add_character_to_dialogue(Native_Call_Context@ ctx) {
+        int character_id = ctx.take_handle_id();
+
+        // TODO error/warning if not in dialogue!
+        // TODO warning if already added
+
+        if (MovementObjectExists(character_id)) {
+            Object@ character_as_object = ReadObjectFromID(character_id);
+            MovementObject@ character = ReadCharacterID(character_id);
+            vec3 position = character_as_object.GetTranslation();
+            mat4 rotation = Mat4FromQuaternion(character_as_object.GetRotation());
+            character.ReceiveScriptMessage("set_dialogue_control true");
+            character.ReceiveScriptMessage("set_dialogue_position " + position.x + " " + position.y + " " + position.z);
+
+            float rotZ = atan2(-rotation[8], rotation[0]);
+            character.ReceiveScriptMessage("set_rotation "+ (rotZ * (180.0f / 3.14f)));
+            //Log(info, (rotation.z * (180.0f / 3.14f) + " ROTATO"));
+            environment::dialogue_participants.insertLast(character_id);
+        } else {
+            // TODO error handling
+        }
+    }
+
+    void set_character_animation(Native_Call_Context@ ctx) {
+        int character_id = ctx.take_handle_id();
+        string animation = ctx.take_string();
+
+        // TODO error/warning if not in dialogue!
+
+        if (MovementObjectExists(character_id)) {
+            ReadCharacterID(character_id).ReceiveScriptMessage("set_animation \"" + animation + "\"");
+            ReadCharacterID(character_id).Execute("this_mo.SetAnimation(\"" + animation + "\", 3.0f, _ANM_FROM_START);");
+        } else {
+            // TODO error handling
+        }
+    }
+
     array<Expression@>@ wait_until_dialogue_line_is_complete() {
+        // TODO error/warning if not in dialogue!
+
         return array<Expression@> = {
             make_while(make_function_call("is_in_dialogue"), array<Expression@> = {
                 make_function_call("sleep")
