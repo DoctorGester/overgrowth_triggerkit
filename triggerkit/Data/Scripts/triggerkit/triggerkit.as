@@ -52,6 +52,11 @@
 //      Checkpoints
 //      Maybe we could have something like have actual race contestants? I dunno
 // BUG: when adding a new condition default operator value is not filled at all (because we set it to do_nothing)
+// After the latest update modal window positions are not set correctly, look into it
+// We don't really need to show empty combos now, need to look into it if it's not possible
+//  We could also just draw a text which says "no values available" or whatever
+// BUG: when editing an expression, other expressions under it get their state thrown around due to expression_index changing,
+//      we should tie stateful elements to line counter instead (example: if statement blocks)
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"

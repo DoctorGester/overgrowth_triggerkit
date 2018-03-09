@@ -165,8 +165,9 @@ void draw_trigger_list() {
 
     for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
         string trigger_name_and_id = state.triggers[trigger_index].name + "##list_trigger" + trigger_index;
+        bool is_selected = int(trigger_index) == state.selected_trigger;
 
-        if (ImGui_Selectable(trigger_name_and_id, int(trigger_index) == state.selected_trigger)) {
+        if (ImGui_Selectable(trigger_name_and_id, is_selected)) {
             state.selected_trigger = trigger_index;
         }
 
@@ -271,48 +272,39 @@ void draw_editor_popup_function_selector(Expression@ expression, Ui_Frame_State@
     array<Operator_Group@>@ operator_groups = filter_operator_groups_by_return_type(limit_to);
     array<Function_Definition@>@ source_functions = filter_function_definitions_by_return_type(limit_to);
 
-    int selected_expression = 0;
-    array<string> expression_names;
-
-    int functions_offset = operator_groups.length();
-
-    bool fit_operator_to_a_selected_action = false;
-
     Operator_Definition@ current_fitting_operator = find_operator_definition_by_expression_in_context(expression, frame.top_scope);
+    Function_Definition@ current_function_definition = find_function_definition_by_function_name(expression.identifier_name);
 
-    for (uint group_index = 0; group_index < operator_groups.length(); group_index++) {
-        Operator_Group@ group = operator_groups[group_index];
+    string preview_text;
 
-        if (current_fitting_operator !is null && group is current_fitting_operator.parent_group) {
-            selected_expression = group_index;
-            fit_operator_to_a_selected_action = true;
-        }
-
-        expression_names.insertLast(group.name);
+    if (current_fitting_operator !is null) {
+        preview_text = current_fitting_operator.parent_group.name;
+    } else if (current_function_definition !is null) {
+        preview_text = get_function_name_for_list(current_function_definition);
     }
 
-    for (uint function_index = 0; function_index < source_functions.length(); function_index++) {
-        Function_Definition@ function_definition = source_functions[function_index];
+    if (ImGui_BeginCombo(frame.unique_id("function_selector"), preview_text)) {
+        for (uint group_index = 0; group_index < operator_groups.length(); group_index++) {
+            Operator_Group@ group = operator_groups[group_index];
 
-        string name = get_function_name_for_list(function_definition);
+            bool is_selected = current_fitting_operator !is null && group is current_fitting_operator.parent_group;
 
-        if (!fit_operator_to_a_selected_action && expression.identifier_name == function_definition.function_name) {
-            selected_expression = function_index + functions_offset;
+            if (ImGui_Selectable(group.name, is_selected)) {
+                fill_operator_expression_from_operator_definition(expression, group.operators[0], frame.top_scope);
+            }
         }
 
-        expression_names.insertLast(name);
-    }
+        for (uint function_index = 0; function_index < source_functions.length(); function_index++) {
+            Function_Definition@ function_definition = source_functions[function_index];
 
-    if (ImGui_Combo("##function_selector", selected_expression, expression_names)) {
-        if (selected_expression < functions_offset) {
-            Operator_Definition@ first_operator = operator_groups[selected_expression].operators[0];
+            bool is_selected = expression.identifier_name == function_definition.function_name;
 
-            fill_operator_expression_from_operator_definition(expression, first_operator, frame.top_scope);
-        } else {
-            Function_Definition@ selected_definition = source_functions[selected_expression - functions_offset];
-
-            fill_function_call_expression_from_function_definition(expression, selected_definition, frame.top_scope);
+            if (ImGui_Selectable(get_function_name_for_list(function_definition), is_selected)) {
+                fill_function_call_expression_from_function_definition(expression, function_definition, frame.top_scope);
+            }
         }
+
+        ImGui_EndCombo();
     }
 }
 
@@ -342,9 +334,6 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
 
     ImGui_Text("Action type");
 
-    int selected_action = -1;
-
-    array<string> action_names;
     array<Function_Definition@>@ source_functions;
     array<Ui_Special_Action> special_actions;
 
@@ -360,41 +349,43 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
             Ui_Special_Action("While/Do", EXPRESSION_WHILE),
             Ui_Special_Action("Run in Parallel", EXPRESSION_FORK)
         };
+    }
 
+    string preview_text;
+
+    if (expression.type == EXPRESSION_CALL) {
+        preview_text = get_function_name_for_list(find_function_definition_by_function_name(expression.identifier_name));
+    } else {
         for (uint action_index = 0; action_index < special_actions.length(); action_index++) {
             if (special_actions[action_index].expression_type == expression.type) {
-                selected_action = action_index;
+                preview_text = special_actions[action_index].action_name;
             }
-
-            action_names.insertLast(special_actions[action_index].action_name);
         }
     }
 
-    uint functions_offset = special_actions.length();
+    if (ImGui_BeginCombo(frame.unique_id("function_selector"), preview_text)) {
+        for (uint action_index = 0; action_index < special_actions.length(); action_index++) {
+            Ui_Special_Action@ action = special_actions[action_index];
+            bool is_selected = action.expression_type == expression.type;
 
-    for (uint function_index = 0; function_index < source_functions.length(); function_index++) {
-        Function_Definition@ function_definition = source_functions[function_index];
+            if (ImGui_Selectable(action.action_name, is_selected)) {
+                expression.type = action.expression_type;
 
-        string name = get_function_name_for_list(function_definition);
-
-        if (expression.type == EXPRESSION_CALL && expression.identifier_name == function_definition.function_name) {
-            selected_action = function_index + functions_offset;
+                handle_expression_type_changed_to(action.expression_type, expression);
+            }
         }
 
-        action_names.insertLast(name);
-    }
+        for (uint function_index = 0; function_index < source_functions.length(); function_index++) {
+            Function_Definition@ function_definition = source_functions[function_index];
+            bool is_selected = expression.type == EXPRESSION_CALL && expression.identifier_name == function_definition.function_name;
+            string name = get_function_name_for_list(function_definition);
 
-    if (ImGui_Combo("##function_selector", selected_action, action_names)) {
-        if (selected_action < int(special_actions.length())) {
-            Expression_Type special_type = special_actions[selected_action].expression_type;
-            expression.type = special_type;
-
-            handle_expression_type_changed_to(special_type, expression);
-        } else {
-            Function_Definition@ selected_definition = source_functions[selected_action - functions_offset];
-
-            fill_function_call_expression_from_function_definition(expression, selected_definition, frame.top_scope);
+            if (ImGui_Selectable(name, is_selected)) {
+                fill_function_call_expression_from_function_definition(expression, function_definition, frame.top_scope);
+            }
         }
+
+        ImGui_EndCombo();
     }
 
     ImGui_NewLine();
@@ -412,30 +403,35 @@ bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Varia
 
     collect_scope_variables(frame.top_scope, scope_variables, limit_to);
 
-    array<string> variable_names;
-    int selected_variable = 0;
-
     for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
-        string variable_name = scope_variables[variable_index].name;
-
-        variable_names.insertLast(variable_name);
-
-        if (variable_name == expression.identifier_name) {
-            selected_variable = variable_index;
-
+        if (scope_variables[variable_index].name == expression.identifier_name) {
             @result_variable = scope_variables[variable_index];
+            break;
         }
     }
 
-    bool changed = ImGui_Combo(frame.unique_id("variable_selector"), selected_variable, variable_names);
+    bool user_selected_an_element = false;
 
-    if (changed) {
-        expression.identifier_name = variable_names[selected_variable];
+    string initially_selected_variable_name = expression.identifier_name;
 
-        @result_variable = scope_variables[selected_variable];
+    if (ImGui_BeginCombo(frame.unique_id("variable_selector"), expression.identifier_name)) {
+        for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
+            string variable_name = scope_variables[variable_index].name;
+            bool is_selected = initially_selected_variable_name == expression.identifier_name;
+
+            if (ImGui_Selectable(variable_name, is_selected)) {
+                expression.identifier_name = variable_name;
+
+                @result_variable = scope_variables[variable_index];
+
+                user_selected_an_element = true;
+            }
+        }
+
+        ImGui_EndCombo();
     }
 
-    return changed;
+    return user_selected_an_element;
 }
 
 void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_editor, Literal_Type limit_to) {
@@ -509,7 +505,8 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
 
     bool is_open = true;
 
-    ImGui_SetNextWindowPos(ImGui_GetWindowPos() + vec2(20, 20), ImGuiSetCond_Appearing);
+    ImGui_SetNextWindowPos(ImGui_GetWindowPos() + vec2(20, 20), ImGuiSetCond_Once);
+
     if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter + frame.argument_counter, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
         frame.popup_stack_level++;
 
@@ -533,30 +530,20 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
 }
 
 bool draw_type_selector(Literal_Type& input_type, string text_label) {
-    array<Literal_Type> all_types;
+    bool changed = false;
 
-    all_types.reserve(LITERAL_TYPE_LAST - 1);
+    if (ImGui_BeginCombo(text_label, colored_literal_type(input_type))) {
+        // Skip VOID type
+        for (Literal_Type type = Literal_Type(1); type < LITERAL_TYPE_LAST; type++) {
+            string colored_type_name = colored_literal_type(type);
 
-    // Skip VOID type
-    for (Literal_Type type = Literal_Type(1); type < LITERAL_TYPE_LAST; type++) {
-        all_types.insertLast(type);
-    }
-
-    array<string> type_names;
-    int selected = -1;
-
-    for (uint index = 0; index < all_types.length(); index++) {
-        if (all_types[index] == input_type) {
-            selected = index;
+            if (ImGui_Selectable(colored_type_name, type == input_type)) {
+                input_type = type;
+                changed = true;
+            }
         }
 
-        type_names.insertLast(colored_literal_type(all_types[index]));
-    }
-
-    bool changed = ImGui_Combo(text_label, selected, type_names);
-
-    if (changed) {
-        input_type = all_types[selected];
+        ImGui_EndCombo();
     }
 
     ImGui_SameLine();
@@ -635,21 +622,11 @@ void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@
 
     Operator_Group@ operator_group = fitting_operator.parent_group;
 
-    array<string> operator_names;
-    int selected_operator = 0;
     int max_text_width = 35;
 
     for (uint operator_index = 0; operator_index < operator_group.operators.length(); operator_index++) {
         Operator_Definition@ operator = operator_group.operators[operator_index];
-
-        if (operator.operator_type == fitting_operator.operator_type) {
-            selected_operator = operator_index;
-        }
-
         string operator_name = operator_type_to_ui_string(operator.operator_type);
-
-        operator_names.insertLast(colored_keyword(operator_name));
-
         int operator_name_width = int(ImGui_CalcTextSize(operator_name).x + 35);
         max_text_width = max(operator_name_width, max_text_width);
     }
@@ -660,8 +637,18 @@ void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@
 
     ImGui_PushItemWidth(max_text_width);
 
-    if (ImGui_Combo(frame.unique_id("operator_selector"), selected_operator, operator_names)) {
-        expression.operator_type = operator_group.operators[selected_operator].operator_type;
+    if (ImGui_BeginCombo(frame.unique_id("operator_selector"), operator_type_to_ui_string(fitting_operator.operator_type))) {
+        for (uint operator_index = 0; operator_index < operator_group.operators.length(); operator_index++) {
+            Operator_Definition@ operator = operator_group.operators[operator_index];
+
+            string operator_name = operator_type_to_ui_string(operator.operator_type);
+
+            if (ImGui_Selectable(operator_name, operator.operator_type == fitting_operator.operator_type)) {
+                expression.operator_type = operator.operator_type;
+            }
+        }
+
+        ImGui_EndCombo();
     }
 
     ImGui_PopItemWidth();
@@ -880,21 +867,17 @@ void draw_trigger_content(Trigger@ current_trigger) {
     @frame.top_scope = global_scope;
 
     if (ImGui_TreeNodeEx("Event##event_block", ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen)) {
-        int selected_event = 0;
-        array<string> event_names;
-
-        for (uint event_index = 0; event_index < EVENT_LAST; event_index++) {
-            event_names.insertLast(state.native_events[event_index].pretty_name);
-
-            if (current_trigger.event_type == Event_Type(event_index)) {
-                selected_event = event_index;
-            }
-        }
-
         ImGui_Image(icons::event, size: vec2(16, 16));
         ImGui_SameLine();
-        if (ImGui_Combo("##function_selector", selected_event, event_names)) {
-            current_trigger.event_type = Event_Type(selected_event);
+
+        if (ImGui_BeginCombo("##function_selector", state.native_events[current_trigger.event_type].pretty_name)) {
+            for (Event_Type type = Event_Type(0); type < EVENT_LAST; type++) {
+                if (ImGui_Selectable(state.native_events[type].pretty_name, current_trigger.event_type == type)) {
+                    current_trigger.event_type = type;
+                }
+            }
+
+            ImGui_EndCombo();
         }
 
         ImGui_TreePop();
