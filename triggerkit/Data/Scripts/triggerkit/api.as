@@ -1,10 +1,12 @@
 funcdef void Native_Function_Executor(Native_Call_Context@ context);
 
 enum Function_Category {
+    CATEGORY_NONE,
     CATEGORY_OTHER,
     CATEGORY_DIALOGUE,
     CATEGORY_CAMERA,
-    CATEGORY_WAIT
+    CATEGORY_WAIT,
+    CATEGORY_LAST
 }
 
 class Event_Definition {
@@ -35,7 +37,7 @@ class Function_Definition {
     array<Literal_Type> argument_types;
     array<string> argument_names;
     Literal_Type return_type = LITERAL_TYPE_VOID;
-    Function_Category function_category = CATEGORY_OTHER;
+    Function_Category function_category = CATEGORY_NONE;
     string pretty_name;
     string format;
     string function_name;
@@ -70,17 +72,12 @@ class Function_Definition {
         return this;
     }
 
-    Function_Definition@ name(string name) {
-        this.function_name = name;
-        return this;
-    }
-
     Function_Definition@ category(Function_Category function_category) {
         this.function_category = function_category;
         return this;
     }
 
-    Function_Definition@ list_name(string pretty_name) {
+    Function_Definition@ name(string pretty_name) {
         this.pretty_name = pretty_name;
         return this;
     }
@@ -168,7 +165,7 @@ class Api_Builder {
 
     Function_Definition@ func(string name, Native_Function_Executor@ native_executor) {
         Function_Definition instance;
-        instance.name(name);
+        instance.function_name = name;
         instance.returns(LITERAL_TYPE_VOID);
         instance.native = true;
         @instance.native_executor = native_executor;
@@ -180,7 +177,7 @@ class Api_Builder {
 
     Function_Definition@ func(string name, array<Expression@>@ user_code) {
         Function_Definition instance;
-        instance.name(name);
+        instance.function_name = name;
         instance.returns(LITERAL_TYPE_VOID);
         instance.native = false;
         @instance.user_code = user_code;
@@ -207,6 +204,25 @@ class Api_Builder {
         @events[event_type] = instance;
 
         return instance;
+    }
+
+    void verify() {
+        for (uint function_index = 0; function_index < functions.length(); function_index++) {
+            Function_Definition@ function_definition = functions[function_index];
+            string name_in_backticks = "'" + function_definition.function_name + "'";
+
+            if (function_definition.format.isEmpty()) {
+                Log(error, "[API] " + name_in_backticks + " is missing a format string");
+            }
+
+            if (function_definition.pretty_name.isEmpty()) {
+                Log(error, "[API] " + name_in_backticks + " is missing a list name");
+            }
+
+            if (function_definition.function_category == CATEGORY_NONE) {
+                Log(error, "[API] " + name_in_backticks + " is missing a category");
+            }
+        }
     }
 }
 
@@ -428,47 +444,65 @@ Api_Builder@ build_api() {
 
     api
         .func("do_nothing", api::do_nothing)
-        .list_name("Do nothing")
+        .name("Do nothing")
         .fmt("Do nothing");
 
     api
         .func("fork", api::fork)
-        .list_name("Fork")
+        .name("Fork")
         .fmt("Fork");
 
     api
         .func("print_str", api::print_str)
-        .list_name("Display text")
+        .name("Display text")
         .fmt("Display {}")
         .takes(LITERAL_TYPE_STRING);
 
     api
         .func("rnd", api::rnd)
-        .list_name("Random number")
+        .name("Random number")
         .fmt("Random number")
         .returns(LITERAL_TYPE_NUMBER);
 
     api
         .func("get_game_time", api::get_game_time)
-        .list_name("Current game time")
+        .name("Current game time")
         .fmt("Current game time")
         .returns(LITERAL_TYPE_NUMBER);
 
     api
+        .func("start_dialogue", api::start_dialogue)
+        .name("Start dialogue")
+        .fmt("Start dialogue")
+        .category(CATEGORY_DIALOGUE);
+
+    api
+        .func("add_character_to_dialogue", api::add_character_to_dialogue)
+        .name("Add a character to dialogue")
+        .fmt("Add {} to current dialogue")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER);
+
+    api
+        .func("set_character_dialogue_animation", api::set_character_dialogue_animation)
+        .name("Set character's dialogue animation")
+        .fmt("Set {}'s dialogue animation to {}")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER)
+        .takes(LITERAL_TYPE_STRING);
+
+    api
         .func("dialogue_say", api::dialogue_say)
+        .name("Say")
         .fmt("> {}: {}")
         .category(CATEGORY_DIALOGUE)
         .takes(LITERAL_TYPE_STRING)
         .takes(LITERAL_TYPE_STRING);
 
     api
-        .func("start_dialogue", api::start_dialogue)
-        .fmt("Show dialogue screen")
-        .category(CATEGORY_DIALOGUE);
-
-    api
         .func("end_dialogue", api::end_dialogue)
-        .fmt("Hide dialogue screen")
+        .name("End dialogue")
+        .fmt("End dialogue")
         .category(CATEGORY_DIALOGUE);
 
     api
@@ -488,39 +522,13 @@ Api_Builder@ build_api() {
         .takes(LITERAL_TYPE_CAMERA);
 
     api
-        .func("set_character_animation", api::set_character_animation)
-        .fmt("Set {}'s animation to {}")
-        .category(CATEGORY_DIALOGUE)
-        .takes(LITERAL_TYPE_CHARACTER)
-        .takes(LITERAL_TYPE_STRING);
-
-    api
-        .func("add_character_to_dialogue", api::add_character_to_dialogue)
-        .fmt("Add {} to current dialogue")
-        .category(CATEGORY_DIALOGUE)
-        .takes(LITERAL_TYPE_CHARACTER);
-
-    api
         .func("transition_camera", api::transition_camera)
-        .fmt("Move camera from {} to {} over {} seconds")
-        .category(CATEGORY_CAMERA)
-        .takes(LITERAL_TYPE_CAMERA)
-        .takes(LITERAL_TYPE_CAMERA)
-        .takes(LITERAL_TYPE_NUMBER)
-        .takes(LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE);
-
-    api
-        .func("transition_camera_2", api::transition_camera)
         .fmt("Move camera from {} to {} over {} seconds with {} interpolation")
         .category(CATEGORY_CAMERA)
         .takes(LITERAL_TYPE_CAMERA)
         .takes(LITERAL_TYPE_CAMERA)
         .takes(LITERAL_TYPE_NUMBER)
         .takes(LITERAL_TYPE_CAMERA_INTERPOLATION_TYPE);
-
-    api
-        .func("end_dialogue", api::end_dialogue)
-        .fmt("Hide dialogue screen");
 
     api
         .func("is_in_dialogue", api::is_in_dialogue)
@@ -533,14 +541,8 @@ Api_Builder@ build_api() {
         .fmt("Sleep until the next update");
 
     api
-        .func("set_camera_location", api::set_camera_location)
-        .fmt("Camera {} -> {}")
-        .takes(LITERAL_TYPE_VECTOR_3)
-        .takes(LITERAL_TYPE_VECTOR_3);
-
-    api
         .func("n2s", api::n2s)
-        .list_name("Number to text")
+        .name("Number to text")
         .fmt("{} as text")
         .takes(LITERAL_TYPE_NUMBER)
         .returns(LITERAL_TYPE_STRING);
@@ -563,6 +565,8 @@ Api_Builder@ build_api() {
         .fmt("Move camera from {} to {}")
         .takes(LITERAL_TYPE_VECTOR_3, "from")
         .takes(LITERAL_TYPE_VECTOR_3, "to");
+
+    api.verify();
 
     return api;
 }
@@ -836,7 +840,7 @@ namespace api {
         }
     }
 
-    void set_character_animation(Native_Call_Context@ ctx) {
+    void set_character_dialogue_animation(Native_Call_Context@ ctx) {
         int character_id = ctx.take_handle_id();
         string animation = ctx.take_string();
 
@@ -844,7 +848,7 @@ namespace api {
 
         if (MovementObjectExists(character_id)) {
             ReadCharacterID(character_id).ReceiveScriptMessage("set_animation \"" + animation + "\"");
-            ReadCharacterID(character_id).Execute("this_mo.SetAnimation(\"" + animation + "\", 3.0f, _ANM_FROM_START);");
+            // ReadCharacterID(character_id).Execute("this_mo.SetAnimation(\"" + animation + "\", 3.0f, _ANM_FROM_START);");
         } else {
             // TODO error handling
         }

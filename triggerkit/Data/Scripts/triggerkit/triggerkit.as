@@ -17,10 +17,11 @@
 // Figure out another demo with proper dialogues
 // Make even more demos, abandon this one!
 // Varargs for string concatenation? We could combine them into an array and pass that easily
-// Function categories
+// We really need some padding in the expression editor modal
 // Minimum size for both action editor and globals window
 // We WILL need expressions or some kind of parameter selection in events, example: Every X seconds
 //  Alternatively Every X seconds can be easily implemented with while (true) wait
+// Hide all non-void returns in statement editor popup, but add an exception boolean which would allow functions like CreateCharacter to be there
 
 // UI: User functions!
 // Compiler: Actual function types so we could get rid of EXPRESSION_FORK and the whole strapped on event architecture

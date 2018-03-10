@@ -15,7 +15,10 @@ class Trigger {
 }
 
 class Trigger_Kit_State {
+    // Stack
     array<Expression@> edited_expressions;
+    array<Function_Category> selected_categories;
+
     array<Function_Definition@> function_definitions;
     array<Event_Definition@> native_events;
     array<Operator_Group@> operator_groups;
@@ -201,6 +204,13 @@ void draw_trigger_kit() {
     float windowWidth = ImGui_GetWindowWidth();
     float window_height = ImGui_GetWindowHeight();
 
+    // TODO this hides the cameras window because the modal is handled in draw_icon_menu_bar
+    // ImGui_IsWindowCollapsed() is not a thing right now
+    if (window_height < 20) {
+        ImGui_End();
+        return;
+    }
+
     if (windowWidth < 500) {
         windowWidth = 500;
         ImGui_SetWindowSize(vec2(windowWidth, window_height), ImGuiSetCond_Always);
@@ -253,6 +263,7 @@ void draw_expression_and_continue_on_the_same_line(Expression@ expression, Ui_Fr
 }
 
 void pop_edited_expression(Ui_Frame_State@ frame) {
+    state.selected_categories.removeLast();
     state.edited_expressions.removeLast();
     frame.popup_stack_level--;
 }
@@ -329,49 +340,73 @@ void handle_expression_type_changed_to(Expression_Type expression_type, Expressi
     }
 }
 
-void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
+void draw_statement_editor_popup(Ui_Frame_State@ frame) {
     Expression@ expression = state.edited_expressions[frame.popup_stack_level - 1];
+    Function_Category selected_category = state.selected_categories[frame.popup_stack_level - 1];
 
-    ImGui_Text("Action type");
+    ImGui_Text("Action category");
 
-    array<Function_Definition@>@ source_functions;
-    array<Ui_Special_Action> special_actions;
+    if (ImGui_BeginCombo(frame.unique_id("category_selector"), function_category_to_string(selected_category))) {
+        for (Function_Category category = Function_Category(0); category < CATEGORY_LAST; category++) {
+            if (ImGui_Selectable(function_category_to_string(category), category == selected_category)) {
+                state.selected_categories[frame.popup_stack_level - 1] = category;
+                selected_category = category; // We can't use a reference?
 
-    if (limit_to != LITERAL_TYPE_VOID) {
-        @source_functions = filter_function_definitions_by_return_type(limit_to);
-    } else {
-        @source_functions = state.function_definitions;
+                if (category != CATEGORY_NONE) {
+                    Function_Definition@ first_function_in_category = filter_function_definitions_by_category(category)[0];
+                    Function_Definition@ current_function_definition = find_function_definition_by_function_name(expression.identifier_name);
 
-        special_actions = array<Ui_Special_Action> = {
-            Ui_Special_Action("Declare Variable", EXPRESSION_DECLARATION),
-            Ui_Special_Action("Assign Variable", EXPRESSION_ASSIGNMENT),
-            Ui_Special_Action("If/Then/Else", EXPRESSION_IF),
-            Ui_Special_Action("While/Do", EXPRESSION_WHILE),
-            Ui_Special_Action("Run in Parallel", EXPRESSION_FORK)
-        };
+                    if (current_function_definition is null || first_function_in_category.function_category != current_function_definition.function_category) {
+                        expression.identifier_name = first_function_in_category.function_name;
+                    }
+                }
+            }
+        }
+
+        ImGui_EndCombo();
     }
 
-    string preview_text;
+    array<Function_Definition@>@ source_functions = filter_function_definitions_by_category(selected_category);
+
+    const array<Ui_Special_Action> special_actions = {
+        Ui_Special_Action("Declare Variable", EXPRESSION_DECLARATION),
+        Ui_Special_Action("Assign Variable", EXPRESSION_ASSIGNMENT),
+        Ui_Special_Action("If/Then/Else", EXPRESSION_IF),
+        Ui_Special_Action("While/Do", EXPRESSION_WHILE),
+        Ui_Special_Action("Run in Parallel", EXPRESSION_FORK)
+    };
+
+    string function_preview_text;
 
     if (expression.type == EXPRESSION_CALL) {
-        preview_text = get_function_name_for_list(find_function_definition_by_function_name(expression.identifier_name));
+        Function_Definition@ function_definition = find_function_definition_by_function_name(expression.identifier_name);
+
+        if (function_definition is null) {
+            function_preview_text = expression.identifier_name;
+        } else {
+            function_preview_text = get_function_name_for_list(function_definition);
+        }
     } else {
         for (uint action_index = 0; action_index < special_actions.length(); action_index++) {
             if (special_actions[action_index].expression_type == expression.type) {
-                preview_text = special_actions[action_index].action_name;
+                function_preview_text = special_actions[action_index].action_name;
             }
         }
     }
 
-    if (ImGui_BeginCombo(frame.unique_id("function_selector"), preview_text)) {
-        for (uint action_index = 0; action_index < special_actions.length(); action_index++) {
-            Ui_Special_Action@ action = special_actions[action_index];
-            bool is_selected = action.expression_type == expression.type;
+    ImGui_Text("Action type");
 
-            if (ImGui_Selectable(action.action_name, is_selected)) {
-                expression.type = action.expression_type;
+    if (ImGui_BeginCombo(frame.unique_id("function_selector"), function_preview_text)) {
+        if (selected_category == CATEGORY_NONE) {
+            for (uint action_index = 0; action_index < special_actions.length(); action_index++) {
+                const Ui_Special_Action@ action = special_actions[action_index];
+                bool is_selected = action.expression_type == expression.type;
 
-                handle_expression_type_changed_to(action.expression_type, expression);
+                if (ImGui_Selectable(action.action_name, is_selected)) {
+                    expression.type = action.expression_type;
+
+                    handle_expression_type_changed_to(action.expression_type, expression);
+                }
             }
         }
 
@@ -379,6 +414,10 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame, Literal_Type limit_to) {
             Function_Definition@ function_definition = source_functions[function_index];
             bool is_selected = expression.type == EXPRESSION_CALL && expression.identifier_name == function_definition.function_name;
             string name = get_function_name_for_list(function_definition);
+
+            if (selected_category == CATEGORY_NONE) {
+                name = function_category_to_string(function_definition.function_category) + " - " + name;
+            }
 
             if (ImGui_Selectable(name, is_selected)) {
                 fill_function_call_expression_from_function_definition(expression, function_definition, frame.top_scope);
@@ -511,7 +550,7 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
         frame.popup_stack_level++;
 
         if (parent_is_a_code_block && !frame.drawing_conditions_block) {
-            draw_statement_editor_popup(frame, limit_to);
+            draw_statement_editor_popup(frame);
         } else {
             bool hide_literal_editor = frame.drawing_conditions_block && parent_is_a_code_block;
             draw_expression_editor_popup(frame, !hide_literal_editor, limit_to);

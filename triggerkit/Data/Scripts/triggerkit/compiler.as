@@ -112,6 +112,7 @@ Translation_Context@ prepare_translation_context() {
     @global_variables.variables = state.global_variables;
 
     Api_Builder@ api_builder = build_api();
+    api_builder.verify();
     
     Translation_Context translation_context;
     @translation_context.function_definitions = api_builder.functions;

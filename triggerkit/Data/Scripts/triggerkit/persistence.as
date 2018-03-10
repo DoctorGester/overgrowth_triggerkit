@@ -192,7 +192,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
 
     switch (expression.type) {
         case EXPRESSION_OPERATOR: {
-            return join(array<string> = {
+            return real_indent + join(array<string> = {
                 KEYWORD_OPERATOR,
                 operator_type_to_serializeable_string(expression.operator_type),
                 serialize_expression_to_string(expression.left_operand, indent),

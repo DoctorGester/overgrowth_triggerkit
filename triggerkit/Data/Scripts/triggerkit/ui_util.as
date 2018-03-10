@@ -416,6 +416,18 @@ TextureAssetRef get_call_icon(Expression@ expression) {
     return icons::action_other;
 }
 
+string function_category_to_string(Function_Category function_category) {
+    switch (function_category) {
+        case CATEGORY_NONE: return "All";
+        case CATEGORY_OTHER: return "Other";
+        case CATEGORY_WAIT: return "Waiting";
+        case CATEGORY_DIALOGUE: return "Dialogue";
+        case CATEGORY_CAMERA: return "Camera";
+    }
+
+    return "Category " + function_category;
+}
+
 void draw_expression_image(Expression@ expression) {
     ImGui_SetCursorPosY(ImGui_GetCursorPosY() + 1);
 
@@ -522,6 +534,7 @@ string find_vacant_trigger_name() {
     return trigger_name;
 }
 
+// TODO unused?
 array<Function_Definition@> filter_function_definitions_by_predicate(Function_Predicate@ predicate) {
     array<Function_Definition@> filter_result;
 
@@ -550,6 +563,20 @@ array<Function_Definition@> filter_function_definitions_by_return_type(Literal_T
     return filter_result;
 }
 
+array<Function_Definition@> filter_function_definitions_by_category(Function_Category category) {
+    array<Function_Definition@> filter_result;
+
+    for (uint index = 0; index < state.function_definitions.length(); index++) {
+        Function_Definition@ function_definition = state.function_definitions[index];
+
+        if (function_definition.function_category == category || category == CATEGORY_NONE) {
+            filter_result.insertLast(function_definition);
+        }
+    }
+
+    return filter_result;
+}
+
 array<Operator_Group@> filter_operator_groups_by_return_type(Literal_Type limit_to) {
     array<Operator_Group@> filter_result;
 
@@ -567,4 +594,5 @@ array<Operator_Group@> filter_operator_groups_by_return_type(Literal_Type limit_
 void open_expression_editor_popup(Expression@ expression, Ui_Frame_State@ frame) {
     ImGui_OpenPopup("Edit###Popup" + frame.popup_stack_level + frame.line_counter + frame.argument_counter);
     state.edited_expressions.insertLast(expression);
+    state.selected_categories.insertLast(CATEGORY_NONE);
 }
