@@ -6,19 +6,15 @@
 //  from it and will fail to determine the operator. This can be prevented by somehow caching the expression type in
 //  the expression itself and falling back to that type if we failed to determine one.
 
-// More dialogue functions
-// Exclude certain functions (like boolean comparisons) from the list of available actions
 // Undo/Redo/Cancel. The way to do it: just keep a buffer of serialized code versions and have a push_trigger_state function called at certain times
 // Serialization format versioning
-// Proper error reporting: compiler goes through the whole thing and gives a list of Compiler_Error which have direct links to Expression@ instances, 
+// Proper error reporting: compiler goes through the whole thing and gives a list of Compiler_Error which have trigger name and line numbers, 
 //                         highlight them and exclude related triggers from compilation
 // Fix some todos
 // Break expression, fix the return expression, user functions UI
 // Figure out another demo with proper dialogues
 // Make even more demos, abandon this one!
 // Varargs for string concatenation? We could combine them into an array and pass that easily
-// We really need some padding in the expression editor modal
-// Minimum size for both action editor and globals window
 // We WILL need expressions or some kind of parameter selection in events, example: Every X seconds
 //  Alternatively Every X seconds can be easily implemented with while (true) wait
 // Hide all non-void returns in statement editor popup, but add an exception boolean which would allow functions like CreateCharacter to be there
@@ -31,15 +27,12 @@
 // VM/Compiler: _RESERVE seems like a useless instruction? What are we doing wrong here exactly? There has to be
 //              a way to move the stack pointer without it
 // An interesting thing there: we could have a thread.join function which would wait until a thread ends
-// Fix setting default camera value when making a new camera literal
 // We could somehow signify that a parameter is an enum value and allow selecting it in-place
 //  This gets rid of useless (?) function/variable selectors
 // We desperately need newlines in action dialogue
 // Dialogue milestones:
 //  Enums:
 //    Poses
-//    Camera interpolation types
-//  Research how character positions get set in regular dialogues
 //  Enter dialogue skipping
 //  Figure out how to implement [wait .. 0.4] in our dialogues (maybe some special mode which doesn't trigger "click to proceed?")
 //  Implement Dialogue append string ([wait for click])
@@ -58,6 +51,17 @@
 //  We could also just draw a text which says "no values available" or whatever
 // BUG: when editing an expression, other expressions under it get their state thrown around due to expression_index changing,
 //      we should tie stateful elements to line counter instead (example: if statement blocks)
+// Figure out expression editor modal size issues, we need to have minimum size and dynamically adapt the expressions for the size
+// Dialogue:
+//  should get rid of placement_type lol
+//  start/stop talking
+//  turn torse/head towards (head/torso position)
+//  fade in/out
+//  get current camera
+//  enter skipping
+// We could add category icons to the categories combo (need a custom selectable-like) component for that
+// We can create a separate dialogue position object which just like in regular dialogues contains a head target, an eye target, a torso target and position/rotation
+//  and add a new function which uses that
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"
@@ -285,7 +289,7 @@ void compile_everything() {
 
     Log(info, "load_state_and_compile_code :: " + translation_context.expressions_translated + " expressions translated, took " + get_time_delta_in_ms(time) + "ms");
 
-    print_compilation_debug_info(translation_context);
+    // print_compilation_debug_info(translation_context);
 }
 
 void Init(string p_level_name) {

@@ -2,5 +2,5 @@
 <Type>generic</Type>
 <Hotspot>
     <BillboardColorMap>Data/UI/spawner/thumbs/Hotspot/empty.png</BillboardColorMap>
-    <Script>triggerkit/trigger_camera.as</Script>
+    <Script>triggerkit/hotspots/dialogue_pose.as</Script>
 </Hotspot>

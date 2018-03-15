@@ -199,7 +199,7 @@ void draw_trigger_kit() {
 
     //PushStyles();
 
-    ImGui_Begin("TriggerKit", ImGuiWindowFlags_MenuBar);
+    ImGui_Begin("TriggerKit", ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_ResizeFromAnySide);
 
     float windowWidth = ImGui_GetWindowWidth();
     float window_height = ImGui_GetWindowHeight();
@@ -353,7 +353,7 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame) {
                 selected_category = category; // We can't use a reference?
 
                 if (category != CATEGORY_NONE) {
-                    Function_Definition@ first_function_in_category = filter_function_definitions_by_category(category)[0];
+                    Function_Definition@ first_function_in_category = filter_function_definitions_for_statement_popup(category)[0];
                     Function_Definition@ current_function_definition = find_function_definition_by_function_name(expression.identifier_name);
 
                     if (current_function_definition is null || first_function_in_category.function_category != current_function_definition.function_category) {
@@ -366,7 +366,7 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame) {
         ImGui_EndCombo();
     }
 
-    array<Function_Definition@>@ source_functions = filter_function_definitions_by_category(selected_category);
+    array<Function_Definition@>@ source_functions = filter_function_definitions_for_statement_popup(selected_category);
 
     const array<Ui_Special_Action> special_actions = {
         Ui_Special_Action("Declare Variable", EXPRESSION_DECLARATION),
@@ -452,11 +452,12 @@ bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Varia
     bool user_selected_an_element = false;
 
     string initially_selected_variable_name = expression.identifier_name;
+    string preview_text = expression.type == EXPRESSION_IDENTIFIER ? expression.identifier_name : "";
 
-    if (ImGui_BeginCombo(frame.unique_id("variable_selector"), expression.identifier_name)) {
+    if (ImGui_BeginCombo(frame.unique_id("variable_selector"), preview_text)) {
         for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
             string variable_name = scope_variables[variable_index].name;
-            bool is_selected = initially_selected_variable_name == expression.identifier_name;
+            bool is_selected = expression.type == EXPRESSION_IDENTIFIER && initially_selected_variable_name == expression.identifier_name;
 
             if (ImGui_Selectable(variable_name, is_selected)) {
                 expression.identifier_name = variable_name;
@@ -493,9 +494,13 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_edito
 
     Variable@ selected_variable = null;
     
+    ImGui_PushItemWidth(-1);
+
     if (draw_variable_selector(frame, expression, selected_variable, limit_to)) {
         expression.type = EXPRESSION_IDENTIFIER;
     }
+
+    ImGui_PopItemWidth();
 
     bool is_a_function_call = expression.type == EXPRESSION_CALL;
     bool is_an_operator = expression.type == EXPRESSION_OPERATOR;
@@ -509,7 +514,11 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_edito
 
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
+    ImGui_PushItemWidth(-1);
+
     draw_editor_popup_function_selector(expression, frame, limit_to);
+
+    ImGui_PopItemWidth();
 
     if (is_a_function_call || is_an_operator) {
         ImGui_SetCursorPosX(offset);
@@ -546,8 +555,13 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
 
     ImGui_SetNextWindowPos(ImGui_GetWindowPos() + vec2(20, 20), ImGuiSetCond_Once);
 
-    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter + frame.argument_counter, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui_PushStyleVar(ImGuiStyleVar_WindowPadding, vec2(15));
+
+    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter + frame.argument_counter, is_open, ImGuiWindowFlags_ResizeFromAnySide)) {
         frame.popup_stack_level++;
+
+        // I'm not sure if there is a way to get the default stylevar value
+        ImGui_PushStyleVar(ImGuiStyleVar_WindowPadding, vec2(4));
 
         if (parent_is_a_code_block && !frame.drawing_conditions_block) {
             draw_statement_editor_popup(frame);
@@ -556,8 +570,12 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
             draw_expression_editor_popup(frame, !hide_literal_editor, limit_to);
         }
 
+        ImGui_PopStyleVar();
+
         ImGui_EndPopup();
     }
+
+    ImGui_PopStyleVar();
 
     if (!is_open) {
         pop_edited_expression(frame);
@@ -739,9 +757,14 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
         case EXPRESSION_DECLARATION: {
             pre_expression_text(colored_keyword("Declare"));
             
+            float combo_width = ImGui_CalcTextSize(literal_type_to_ui_string(expression.literal_type)).x;
+            ImGui_PushItemWidth(int(combo_width) + 30);
+            
             if (draw_type_selector(expression.literal_type, "")) {
                 expression.value_expression = make_empty_lit(expression.literal_type);
             }
+
+            ImGui_PopItemWidth();
 
             ImGui_SetTextBuf(expression.identifier_name);
             

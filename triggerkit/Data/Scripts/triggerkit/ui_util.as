@@ -80,6 +80,21 @@ string region_id_to_region_name(int region_id) {
     return region_name;
 }
 
+string pose_id_to_pose_name(int pose_id) {
+    if (!ObjectExists(pose_id)) {
+        return "None";
+    }
+
+    Object@ pose_object = ReadObjectFromID(pose_id);
+    string pose_name = pose_object.GetName();
+
+    if (pose_name.isEmpty()) {
+        return "Pose #" + pose_id;
+    }
+
+    return pose_name;
+}
+
 // TODO this function name is a bit ambigious, we really rely that this is a Character object
 string object_id_to_object_name(int object_id) {
     Object@ object = ReadObjectFromID(object_id);
@@ -121,6 +136,10 @@ array<Object@>@ list_camera_objects() {
 
 array<Object@>@ list_region_objects() {
     return list_objects_by_type_string(HOTSPOT_REGION_TYPE);
+}
+
+array<Object@>@ list_pose_objects() {
+    return list_objects_by_type_string(HOTSPOT_DIALOGUE_POSE_TYPE);
 }
 
 array<Object@>@ list_character_objects() {
@@ -563,13 +582,14 @@ array<Function_Definition@> filter_function_definitions_by_return_type(Literal_T
     return filter_result;
 }
 
-array<Function_Definition@> filter_function_definitions_by_category(Function_Category category) {
+array<Function_Definition@> filter_function_definitions_for_statement_popup(Function_Category category) {
     array<Function_Definition@> filter_result;
 
     for (uint index = 0; index < state.function_definitions.length(); index++) {
         Function_Definition@ function_definition = state.function_definitions[index];
+        bool fits_into_filter_category = function_definition.function_category == category || category == CATEGORY_NONE;
 
-        if (function_definition.function_category == category || category == CATEGORY_NONE) {
+        if (fits_into_filter_category && function_definition.return_type == LITERAL_TYPE_VOID) {
             filter_result.insertLast(function_definition);
         }
     }

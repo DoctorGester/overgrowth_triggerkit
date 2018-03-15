@@ -13,14 +13,19 @@
     <Thumbnail>Data/Images/triggerkit/thumb.png</Thumbnail>
     <PreviewImage>Data/Images/triggerkit/full.jpg</PreviewImage>
 
-    <Item category="Hotspot" 
+    <Item category="&#x1b;AAFFFFFFTrigger&#x1b;FFFFAAFFKit&#x1b;FFFFFFFF" 
           title="Region" 
-          path="Data/Objects/triggerkit/trigger_hotspot.xml" 
+          path="Data/Objects/triggerkit/triggerkit_region.xml" 
           thumbnail="Data/UI/spawner/thumbs/Hotspot/sign_icon.png" />
 
-    <Item category="Hotspot" 
+    <Item category="&#x1b;AAFFFFFFTrigger&#x1b;FFFFAAFFKit&#x1b;FFFFFFFF" 
           title="Camera" 
-          path="Data/Objects/triggerkit/trigger_camera.xml" 
+          path="Data/Objects/triggerkit/triggerkit_camera.xml" 
+          thumbnail="Data/UI/spawner/thumbs/Hotspot/sign_icon.png" />
+
+    <Item category="&#x1b;AAFFFFFFTrigger&#x1b;FFFFAAFFKit&#x1b;FFFFFFFF" 
+          title="Dialogue Pose" 
+          path="Data/Objects/triggerkit/triggerkit_dialogue_pose.xml" 
           thumbnail="Data/UI/spawner/thumbs/Hotspot/sign_icon.png" />
 
     <LevelHookFile>Data/Scripts/triggerkit/triggerkit.as</LevelHookFile>

@@ -484,12 +484,55 @@ Api_Builder@ build_api() {
         .takes(LITERAL_TYPE_CHARACTER);
 
     api
+        .func("set_character_dialogue_position", api::set_character_dialogue_position)
+        .name("Set character's dialogue position")
+        .fmt("Move {} to {} {}")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER)
+        .takes(LITERAL_TYPE_VECTOR_3)
+        .takes(LITERAL_TYPE_CHARACTER_PLACEMENT_TYPE);
+
+    api
         .func("set_character_dialogue_animation", api::set_character_dialogue_animation)
         .name("Set character's dialogue animation")
         .fmt("Set {}'s dialogue animation to {}")
         .category(CATEGORY_DIALOGUE)
         .takes(LITERAL_TYPE_CHARACTER)
         .takes(LITERAL_TYPE_STRING);
+
+    api
+        .func("set_character_dialogue_pose", api::set_character_dialogue_pose)
+        .name("Apply dialogue pose to character")
+        .fmt("Apply {} to {}")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_POSE)
+        .takes(LITERAL_TYPE_CHARACTER);
+
+    // TODO could be a single function + enum!
+
+    api
+        .func("set_character_dialogue_torso_target", api::set_character_dialogue_torso_target)
+        .name("Rotate character's torso towards point")
+        .fmt("Rotate {}'s torso towards {}")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER)
+        .takes(LITERAL_TYPE_VECTOR_3);
+
+    api
+        .func("set_character_dialogue_head_target", api::set_character_dialogue_head_target)
+        .name("Rotate character's head towards point")
+        .fmt("Rotate {}'s head towards {}")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER)
+        .takes(LITERAL_TYPE_VECTOR_3);
+
+    api
+        .func("set_character_dialogue_eye_target", api::set_character_dialogue_eye_target)
+        .name("Make character eyes look at")
+        .fmt("Make {} look at {}")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER)
+        .takes(LITERAL_TYPE_VECTOR_3);
 
     api
         .func("dialogue_say", api::dialogue_say)
@@ -534,6 +577,20 @@ Api_Builder@ build_api() {
         .func("is_in_dialogue", api::is_in_dialogue)
         .returns(LITERAL_TYPE_BOOL)
         .fmt("Is waiting for a dialogue line to end");
+
+    api
+        .func("center_of_the_region", api::get_center_of_the_region)
+        .name("Center of a region")
+        .fmt("Center of {}")
+        .takes(LITERAL_TYPE_REGION)
+        .returns(LITERAL_TYPE_VECTOR_3);
+
+    api
+        .func("get_character_position", api::get_character_position)
+        .name("Position of a character")
+        .fmt("Position of {}")
+        .takes(LITERAL_TYPE_CHARACTER)
+        .returns(LITERAL_TYPE_VECTOR_3);
 
     api
         .func("sleep", api::sleep)
@@ -830,10 +887,10 @@ namespace api {
             mat4 rotation = Mat4FromQuaternion(character_as_object.GetRotation());
             character.ReceiveScriptMessage("set_dialogue_control true");
             character.ReceiveScriptMessage("set_dialogue_position " + position.x + " " + position.y + " " + position.z);
+            character.Execute("FixDiscontinuity();");
 
             float rotZ = atan2(-rotation[8], rotation[0]);
-            character.ReceiveScriptMessage("set_rotation "+ (rotZ * (180.0f / 3.14f)));
-            //Log(info, (rotation.z * (180.0f / 3.14f) + " ROTATO"));
+            //character.ReceiveScriptMessage("set_rotation "+ (rotZ * (180.0f / 3.14f)));
             environment::dialogue_participants.insertLast(character_id);
         } else {
             // TODO error handling
@@ -849,6 +906,139 @@ namespace api {
         if (MovementObjectExists(character_id)) {
             ReadCharacterID(character_id).ReceiveScriptMessage("set_animation \"" + animation + "\"");
             // ReadCharacterID(character_id).Execute("this_mo.SetAnimation(\"" + animation + "\", 3.0f, _ANM_FROM_START);");
+        } else {
+            // TODO error handling
+        }
+    }
+
+    vec3 get_vec3_from_script_params(ScriptParams@ script_params, string param_prefix) {
+        vec3 result;
+
+        result.x = get_param_value_or_zero(script_params, param_prefix + "_x");
+        result.y = get_param_value_or_zero(script_params, param_prefix + "_y");
+        result.z = get_param_value_or_zero(script_params, param_prefix + "_z");
+
+        return result;
+    }
+
+    void set_character_dialogue_pose(Native_Call_Context@ ctx) {
+        int pose_id = ctx.take_handle_id();
+        int character_id = ctx.take_handle_id();
+
+        // TODO error/warning if not in dialogue!
+
+        if (!ObjectExists(pose_id)) {
+            // TODO error handling
+            return;
+        }
+
+        if (!MovementObjectExists(character_id)) {
+            // TODO error handling
+            return;
+        }
+
+        Object@ pose_object = ReadObjectFromID(pose_id);
+        quaternion rotation = pose_object.GetRotation();
+        ScriptParams@ pose_params = pose_object.GetScriptParams();
+
+        vec3 root_position = pose_object.GetTranslation();
+        vec3 head_relative_position = get_vec3_from_script_params(pose_params, "head");
+        vec3 torso_relative_position = get_vec3_from_script_params(pose_params, "torso");
+        vec3 eye_relative_position = get_vec3_from_script_params(pose_params, "eye");
+
+        vec3 head = root_position + (rotation * head_relative_position);
+        vec3 torso = root_position + (rotation * torso_relative_position);
+        vec3 eye = root_position + (rotation * eye_relative_position);
+
+        MovementObject@ character = ReadCharacterID(character_id);
+
+        character.FixDiscontinuity();
+
+        set_character_position_and_rotation_from_pose(character_id, pose_id);
+
+        Log(info, "head/torso/eye " + head + " " + torso + " " + eye);
+
+        character.ReceiveScriptMessage("set_torso_target " + torso.x + " " + torso.y + " " + torso.z + " 1");
+        character.ReceiveScriptMessage("set_head_target " + head.x + " " + head.y + " " + head.z + " 1");
+        character.ReceiveScriptMessage("set_eye_dir " + eye.x + " " + eye.y + " " + eye.z + " 1");
+        character.Execute("FixDiscontinuity();");
+    }
+
+    void set_character_dialogue_position(Native_Call_Context@ ctx) {
+        int character_id = ctx.take_handle_id();
+        vec3 position = ctx.take_vec3();
+        Placement_Type placement_type = Placement_Type(ctx.take_enum_value());
+
+        // TODO error/warning if not in dialogue!
+
+        if (MovementObjectExists(character_id)) {
+            MovementObject@ character = ReadCharacterID(character_id);
+
+            character.ReceiveScriptMessage("set_dialogue_position " + position.x + " " + position.y + " " + position.z);
+
+            if (placement_type == PLACEMENT_ON_THE_GROUND) {
+                // character.Execute("SetOnGround(true); FixDiscontinuity();");
+            }
+        } else {
+            // TODO error handling
+        }
+    }
+
+    void set_character_dialogue_torso_target(Native_Call_Context@ ctx) {
+        int character_id = ctx.take_handle_id();
+        vec3 position = ctx.take_vec3();
+
+        // TODO error/warning if not in dialogue!
+
+        if (MovementObjectExists(character_id)) {
+            ReadCharacterID(character_id).ReceiveScriptMessage("set_torso_target " + position.x + " " + position.y + " " + position.z);
+        } else {
+            // TODO error handling
+        }
+    }
+
+    void set_character_dialogue_head_target(Native_Call_Context@ ctx) {
+        int character_id = ctx.take_handle_id();
+        vec3 position = ctx.take_vec3();
+
+        // TODO error/warning if not in dialogue!
+
+        if (MovementObjectExists(character_id)) {
+            ReadCharacterID(character_id).ReceiveScriptMessage("set_head_target " + position.x + " " + position.y + " " + position.z);
+        } else {
+            // TODO error handling
+        }
+    }
+
+    void set_character_dialogue_eye_target(Native_Call_Context@ ctx) {
+        int character_id = ctx.take_handle_id();
+        vec3 position = ctx.take_vec3();
+
+        // TODO error/warning if not in dialogue!
+
+        if (MovementObjectExists(character_id)) {
+            ReadCharacterID(character_id).ReceiveScriptMessage("set_eye_dir " + position.x + " " + position.y + " " + position.z);
+        } else {
+            // TODO error handling
+        }
+    }
+
+    void get_center_of_the_region(Native_Call_Context@ ctx) {
+        int region_id = ctx.take_handle_id();
+
+        // TODO check if the object is a hotspot
+        if (ObjectExists(region_id)) {
+            ctx.return_vec3(ReadObjectFromID(region_id).GetTranslation());
+        } else {
+            // TODO error handling
+        }
+    }
+
+    void get_character_position(Native_Call_Context@ ctx) {
+        int character_id = ctx.take_handle_id();
+
+        if (MovementObjectExists(character_id)) {
+            ctx.return_vec3(ReadCharacterID(character_id).position);
         } else {
             // TODO error handling
         }
