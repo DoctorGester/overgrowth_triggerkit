@@ -7,6 +7,7 @@ int eye_target_id = -1;
 
 quaternion previous_rotation;
 vec3 previous_position;
+string previous_animation;
 
 void try_queue_delete(int& object_id) {
     if (object_id != -1) {
@@ -126,24 +127,41 @@ void try_delete_placeholder_objects() {
     try_queue_delete(torso_target_id);
     try_queue_delete(head_target_id);
     try_queue_delete(eye_target_id);
+}
 
-    if (preview_character_id != -1) {
-        // TODO this is an OG bug, the call should not be required
-        ReadCharacterID(preview_character_id).Execute("ClearShadowObjects()");
+bool is_selected_safe(int object_id) {
+    if (object_id == -1) {
+        return false;
     }
-    
-    try_queue_delete(preview_character_id);
+
+    return ReadObjectFromID(object_id).IsSelected();
 }
 
 void Dispose() {
     try_delete_placeholder_objects();
+    try_queue_delete(preview_character_id);
+    previous_animation = "";
 
     level.StopReceivingLevelEvents(hotspot.GetID());
 }
 
 void PreDraw(float game_time) {
+    Object@ hotspot_object = ReadObjectFromID(hotspot.GetID());
+
+    bool is_anything_related_selected =
+        hotspot_object.IsSelected() ||
+        is_selected_safe(torso_target_id) ||
+        is_selected_safe(head_target_id) ||
+        is_selected_safe(eye_target_id);
+
+    if (preview_character_id != -1) {
+        ReadCharacterID(preview_character_id).visible = is_anything_related_selected;
+    }
+
     if (!EditorModeActive()) {
         try_delete_placeholder_objects();
+        try_queue_delete(preview_character_id);
+        previous_animation = "";
 
         return;
     }
@@ -153,8 +171,6 @@ void PreDraw(float game_time) {
     try_create_and_set_placeholder_object(torso_target_id, "Data/Textures/ui/torso_widget.tga", "torso", vec3(2, 0, 2));
     try_create_and_set_placeholder_object(head_target_id, "Data/Textures/ui/head_widget.tga", "head", vec3(0, 0, 2));
     try_create_and_set_placeholder_object(eye_target_id, "Data/Textures/ui/eye_widget.tga", "eye", vec3(-2, 0, 2));
-
-    Object@ hotspot_object = ReadObjectFromID(hotspot.GetID());
 
     vec3 current_position = hotspot_object.GetTranslation();
     quaternion current_rotation = hotspot_object.GetRotation();
@@ -169,6 +185,19 @@ void PreDraw(float game_time) {
     update_object_by_id(torso_target_id, "torso", "set_torso_target");
     update_object_by_id(head_target_id, "head", "set_head_target");
     update_object_by_id(eye_target_id, "eye", "set_eye_dir");
+
+    ScriptParams@ hotspot_params = hotspot_object.GetScriptParams();
+    string current_animation;
+
+    if (hotspot_params.HasParam("Animation")) {
+        current_animation = hotspot_params.GetString("Animation");
+    }
+
+    if (current_animation != previous_animation) {
+        previous_animation = current_animation;
+
+        ReadCharacterID(preview_character_id).ReceiveScriptMessage("set_animation \"" + current_animation + "\"");
+    }
 }
 
 void hotspot_moved() {
@@ -234,18 +263,6 @@ void Update() {
 }
 
 void DrawEditor(){
-    Object@ hotspot_as_object = ReadObjectFromID(hotspot.GetID());
-
-    if (!hotspot_as_object.IsSelected()) return;
-
-    mat4 pos_matrix;
-    pos_matrix.SetTranslationPart(hotspot_as_object.GetTranslation() - vec3(0, 1, 0));
-
-    mat4 rot_matrix = Mat4FromQuaternion(hotspot_as_object.GetRotation());
-
-    vec4 color = hotspot_as_object.IsSelected() ? vec4(0.2, 0.95, 0.0, 1.0) : vec4(1);
-
-    //DebugDrawWireMesh("Data/Models/Characters/rabbot/rabbot.obj", pos_matrix * rot_matrix, color, _delete_on_draw);
 }
 
 class CustomTokenIterator {

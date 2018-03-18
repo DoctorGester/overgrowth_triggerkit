@@ -12,6 +12,8 @@ namespace icons {
     TextureAssetRef action_wait = LoadTexture(icons_folder + "Actions-Wait.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_dialogue = LoadTexture(icons_folder + "Actions-Quest.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_camera = LoadTexture(icons_folder + "Actions-Camera.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_pose = LoadTexture(icons_folder + "Actions-UnitSelection.png", TextureLoadFlags_NoMipmap);
+    TextureAssetRef action_region = LoadTexture(icons_folder + "Actions-Region.png", TextureLoadFlags_NoMipmap);
 }
 
 string operator_type_to_ui_string(Operator_Type operator_type) {

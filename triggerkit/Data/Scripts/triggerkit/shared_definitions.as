@@ -44,6 +44,22 @@ float get_param_value_or_zero(ScriptParams@ params, string param) {
     return 0.0f;
 }
 
+void set_or_add_string_param(ScriptParams@ script_params, string param_name, string param_value) {
+    if (script_params.HasParam(param_name)) {
+        script_params.SetString(param_name, param_value);
+    } else {
+        script_params.AddString(param_name, param_value);
+    }
+}
+
+string get_string_param_or_default(ScriptParams@ script_params, string param_name, string default_value = "") {
+    if (script_params.HasParam(param_name)) {
+        return script_params.GetString(param_name);
+    }
+
+    return default_value;
+}
+
 // I'm not that smart, taken from
 // https://stackoverflow.com/questions/5782658/extracting-yaw-from-a-quaternion
 quaternion limit_rotation_to_yaw(quaternion& q) {

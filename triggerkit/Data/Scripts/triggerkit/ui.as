@@ -1,3 +1,4 @@
+#include "triggerkit/ui_modals.as"
 #include "triggerkit/ui_util.as"
 
 class Trigger {
@@ -29,7 +30,9 @@ class Trigger_Kit_State {
     array<Trigger@> triggers;
     array<Variable> global_variables;
 
-    bool is_cameras_window_open = true;
+    bool is_cameras_window_open = false;
+    bool is_poses_window_open = true;
+    bool is_regions_window_open = false;
 }
 
 class Variable {
@@ -143,6 +146,15 @@ void draw_icon_menu_bar() {
         ImGui_EndPopup();
     }
 
+    if (state.is_regions_window_open) {
+        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
+        if (ImGui_Begin("Regions###regions_window", state.is_regions_window_open)) {
+            draw_regions_window();
+
+            ImGui_End();
+        }
+    }
+
     if (state.is_cameras_window_open) {
         ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
         if (ImGui_Begin("Cameras###camers_window", state.is_cameras_window_open)) {
@@ -152,8 +164,29 @@ void draw_icon_menu_bar() {
         }
     }
 
+    if (state.is_poses_window_open) {
+        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
+        if (ImGui_Begin("Poses###poses_window", state.is_poses_window_open)) {
+            draw_poses_window();
+
+            ImGui_End();
+        }
+    }
+
+    if (icon_button("Regions", "open_regions", icons::action_region)) {
+        state.is_regions_window_open = !state.is_regions_window_open;
+    }
+
+    ImGui_SameLine();
+
     if (icon_button("Cameras", "open_cameras", icons::action_camera)) {
         state.is_cameras_window_open = !state.is_cameras_window_open;
+    }
+
+    ImGui_SameLine();
+
+    if (icon_button("Poses", "open_poses", icons::action_pose)) {
+        state.is_poses_window_open = !state.is_poses_window_open;
     }
 
     ImGui_EndGroup();
@@ -970,163 +1003,4 @@ void draw_trigger_content(Trigger@ current_trigger) {
     ImGui_ListBoxFooter();
 
     ImGui_EndGroup();
-}
-
-void draw_globals_modal() {
-    if (icon_button("New variable", "variable_add", icons::action_variable)) {
-        state.global_variables.insertLast(make_variable(LITERAL_TYPE_NUMBER, "New variable"));
-    }
-
-    float window_width = ImGui_GetWindowWidth();
-
-    ImGui_ListBoxHeader("###global_list", size: vec2(-1, -1));
-
-    float right_padding = 100;
-    float free_width = window_width - right_padding;
-
-    for (uint variable_index = 0; variable_index < state.global_variables.length(); variable_index++) {
-        Variable@ variable = state.global_variables[variable_index];
-
-        ImGui_AlignFirstTextHeightToWidgets();
-        ImGui_Image(icons::action_variable, vec2(16, 16));
-        ImGui_SameLine();
-
-        ImGui_PushItemWidth(int(free_width * 0.3));
-
-        ImGui_SetTextBuf(variable.name);
-        if (ImGui_InputText("###variable_name" + variable_index)) {
-            variable.name = ImGui_GetTextBuf();
-        }
-
-        ImGui_PopItemWidth();
-        ImGui_SameLine();
-
-        {
-            ImGui_PushItemWidth(int(free_width * 0.2));
-            
-            draw_type_selector(variable.type, "###type_selector" + variable_index);
-
-            ImGui_PopItemWidth();
-            ImGui_SameLine();
-        }
-
-        {
-            float cursor_pre_checkbox = ImGui_GetCursorPosX();
-
-            bool a = false;
-            ImGui_Checkbox("Is array", a);
-            ImGui_SameLine();
-
-            ImGui_SetCursorPosX(cursor_pre_checkbox + free_width * 0.15f);
-        }
-
-        {
-            ImGui_PushItemWidth(int(free_width * 0.35));
-            draw_editable_literal(variable.type, variable.value, "###" + variable_index);
-            ImGui_PopItemWidth();
-        }
-
-        ImGui_SameLine();
-        ImGui_SetCursorPosX(window_width - 40);
-        
-        if (ImGui_Button("X###" + variable_index)) {
-            state.global_variables.removeAt(variable_index);
-
-            if (variable_index > 0) {
-                variable_index--;
-            }
-        }
-    }
-
-    ImGui_ListBoxFooter();
-}
-
-void set_camera_to_view(Object@ camera_hotspot) {
-    camera_hotspot.SetTranslation(camera.GetPos());
-
-    float deg_to_rad = 3.14f / 180.0f;
-
-    mat4 rotation_matrix_x;
-    rotation_matrix_x.SetRotationX(camera.GetXRotation() * deg_to_rad);
-
-    mat4 rotation_matrix_y;
-    rotation_matrix_y.SetRotationY(camera.GetYRotation() * deg_to_rad);
-
-    quaternion rotation = QuaternionFromMat4(rotation_matrix_y * rotation_matrix_x);
-
-    camera_hotspot.SetRotation(rotation);
-}
-
-void draw_cameras_window() {
-    ImGui_ListBoxHeader("###cameras_list", size: vec2(-1, ImGui_GetWindowHeight() - 160)); // -60 = 1 button exactly
-
-    Object@ selected_hotspot_as_object = null;
-
-    array<Object@>@ camera_objects = list_camera_objects();
-
-    for (uint camera_index = 0; camera_index < camera_objects.length(); camera_index++) {
-        Object@ camera_object = camera_objects[camera_index];
-
-        ImGui_AlignFirstTextHeightToWidgets();
-        ImGui_Image(icons::action_camera, vec2(16, 16));
-        ImGui_SameLine();
-
-        bool is_selected = camera_object.IsSelected();
-
-        if (ImGui_Selectable(camera_id_to_camera_name(camera_object.GetID()), is_selected)) {
-            camera_object.SetSelected(!is_selected);
-        }
-
-        if (is_selected) {
-            @selected_hotspot_as_object = camera_object;
-        }
-    }
-
-    ImGui_ListBoxFooter();
-
-    if (icon_button("New camera", "camera_add", icons::action_camera)) {
-        int camera_id = CreateObject("Data/Objects/triggerkit/trigger_camera.xml", false);
-
-        if (camera_id == -1) {
-            Log(error, "Fatal error: was not able to create camera object");
-            return;
-        }
-
-        Object@ camera_as_object = ReadObjectFromID(camera_id);
-        camera_as_object.SetName("New camera");
-        camera_as_object.SetSelectable(true);
-        camera_as_object.SetSelected(true);
-        camera_as_object.SetCopyable(true);
-        camera_as_object.SetDeletable(true);
-        camera_as_object.SetScalable(true);
-        camera_as_object.SetTranslatable(true);
-        camera_as_object.SetRotatable(true);
-
-        set_camera_to_view(camera_as_object);
-    }
-
-    if (selected_hotspot_as_object !is null) {
-        if (icon_button("Selected camera to view", "set_camera_to_view", icons::action_camera)) {
-            set_camera_to_view(selected_hotspot_as_object);
-        }
-
-        if (icon_button("View to selected camera", "set_view_to_camera", icons::action_camera)) {
-            // TODO doesn't work!
-            const int entity_type_camera = 2;
-
-            array<int>@ object_ids = GetObjectIDsType(entity_type_camera);
-
-            for (uint id_index = 0; id_index < object_ids.length(); id_index++) {
-                Object@ camera_object = ReadObjectFromID(object_ids[id_index]);
-
-                // camera_object.SetTranslation(selected_hotspot_as_object.GetTranslation());
-            }
-            
-            // camera.SetPos(selected_hotspot_as_object.GetTranslation());
-        }
-
-        if (icon_button("Delete selected camera", "delete_camera", icons::action_camera)) {
-            QueueDeleteObjectID(selected_hotspot_as_object.GetID());
-        }
-    }
 }

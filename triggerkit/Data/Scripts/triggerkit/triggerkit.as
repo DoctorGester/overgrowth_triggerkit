@@ -55,13 +55,11 @@
 // Dialogue:
 //  should get rid of placement_type lol
 //  start/stop talking
-//  turn torse/head towards (head/torso position)
 //  fade in/out
 //  get current camera
 //  enter skipping
 // We could add category icons to the categories combo (need a custom selectable-like) component for that
-// We can create a separate dialogue position object which just like in regular dialogues contains a head target, an eye target, a torso target and position/rotation
-//  and add a new function which uses that
+// We need to be able to put cameras/poses/regions into categories
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"

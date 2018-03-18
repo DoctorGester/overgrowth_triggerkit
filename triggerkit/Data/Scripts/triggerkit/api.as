@@ -956,11 +956,16 @@ namespace api {
 
         set_character_position_and_rotation_from_pose(character_id, pose_id);
 
-        Log(info, "head/torso/eye " + head + " " + torso + " " + eye);
+        string animation = get_string_param_or_default(pose_params, "Animation");
 
         character.ReceiveScriptMessage("set_torso_target " + torso.x + " " + torso.y + " " + torso.z + " 1");
         character.ReceiveScriptMessage("set_head_target " + head.x + " " + head.y + " " + head.z + " 1");
         character.ReceiveScriptMessage("set_eye_dir " + eye.x + " " + eye.y + " " + eye.z + " 1");
+
+        if (!animation.isEmpty()) {
+            character.ReceiveScriptMessage("set_animation \"" + animation + "\"");
+        }
+
         character.Execute("FixDiscontinuity();");
     }
 
@@ -991,7 +996,7 @@ namespace api {
         // TODO error/warning if not in dialogue!
 
         if (MovementObjectExists(character_id)) {
-            ReadCharacterID(character_id).ReceiveScriptMessage("set_torso_target " + position.x + " " + position.y + " " + position.z);
+            ReadCharacterID(character_id).ReceiveScriptMessage("set_torso_target " + position.x + " " + position.y + " " + position.z + " 1");
         } else {
             // TODO error handling
         }
@@ -1004,7 +1009,7 @@ namespace api {
         // TODO error/warning if not in dialogue!
 
         if (MovementObjectExists(character_id)) {
-            ReadCharacterID(character_id).ReceiveScriptMessage("set_head_target " + position.x + " " + position.y + " " + position.z);
+            ReadCharacterID(character_id).ReceiveScriptMessage("set_head_target " + position.x + " " + position.y + " " + position.z + " 1");
         } else {
             // TODO error handling
         }
@@ -1017,7 +1022,7 @@ namespace api {
         // TODO error/warning if not in dialogue!
 
         if (MovementObjectExists(character_id)) {
-            ReadCharacterID(character_id).ReceiveScriptMessage("set_eye_dir " + position.x + " " + position.y + " " + position.z);
+            ReadCharacterID(character_id).ReceiveScriptMessage("set_eye_dir " + position.x + " " + position.y + " " + position.z + " 1");
         } else {
             // TODO error handling
         }
