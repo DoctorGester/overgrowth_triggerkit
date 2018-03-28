@@ -14,6 +14,10 @@ namespace icons {
     TextureAssetRef action_camera = LoadTexture(icons_folder + "Actions-Camera.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_pose = LoadTexture(icons_folder + "Actions-UnitSelection.png", TextureLoadFlags_NoMipmap);
     TextureAssetRef action_region = LoadTexture(icons_folder + "Actions-Region.png", TextureLoadFlags_NoMipmap);
+
+    TextureAssetRef poses_torso = LoadTexture("Data/Textures/ui/torso_widget.tga");
+    TextureAssetRef poses_head = LoadTexture("Data/Textures/ui/head_widget.tga");
+    TextureAssetRef poses_eye = LoadTexture("Data/Textures/ui/eye_widget.tga");
 }
 
 string operator_type_to_ui_string(Operator_Type operator_type) {
@@ -317,7 +321,7 @@ string expression_to_string(Expression@ expression) {
 
     switch (expression.type) {
         case EXPRESSION_OPERATOR: {
-            string result = join(array<string> = {
+            string result = join({
                 expression_to_string(expression.left_operand),
                 operator_type_to_ui_string(expression.operator_type),
                 expression_to_string(expression.right_operand)
@@ -331,7 +335,7 @@ string expression_to_string(Expression@ expression) {
         }
 
         case EXPRESSION_DECLARATION: {
-            return join(array<string> = {
+            return join({
                 colored_literal_type(expression.literal_type),
                 colored_identifier(expression.identifier_name),
                 "=",
@@ -340,7 +344,7 @@ string expression_to_string(Expression@ expression) {
         }
             
         case EXPRESSION_ASSIGNMENT:
-            return join(array<string> = {
+            return join({
                 colored_keyword("Set"),
                 colored_identifier(expression.identifier_name),
                 "=",
@@ -350,7 +354,7 @@ string expression_to_string(Expression@ expression) {
         case EXPRESSION_LITERAL: return literal_to_ui_string(expression.literal_type, expression.literal_value);
         case EXPRESSION_CALL: return function_call_to_string(expression);
         case EXPRESSION_REPEAT: {
-            return join(array<string> = {
+            return join({
                 colored_keyword("Repeat"),
                 expression_to_string(expression.value_expression),
                 "times"
@@ -358,7 +362,7 @@ string expression_to_string(Expression@ expression) {
         }
 
         case EXPRESSION_WHILE: {
-            return join(array<string> = {
+            return join({
                 colored_keyword("While"),
                 expression_to_string(expression.value_expression) + ", do"
             }, " ");

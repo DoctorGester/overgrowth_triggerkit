@@ -19,6 +19,8 @@ namespace dialogue {
     string current_dialogue_name = "";
     string current_dialogue_line = "";
 
+    int currently_talking_character = -1;
+
     void dialogue_continue() {
         is_waiting_for_a_line_to_end = false;
     }
@@ -32,15 +34,22 @@ namespace dialogue {
         start_time = the_time;
     }
 
-    void say(string who, string what) {
+    void set_current_text(string who, string what) {
         current_dialogue_name = who;
         current_dialogue_line = what;
         is_waiting_for_a_line_to_end = true;
+        currently_talking_character = -1;
 
         line_start_time = the_time;
         line_progress = 0.0f;
 
         is_waiting_for_a_line_to_get_fully_drawn = true;
+    }
+
+    void make_character_talk(int character_id) {
+        currently_talking_character = character_id;
+
+        ReadCharacterID(character_id).ReceiveMessage("start_talking");
     }
 
     int get_font_size() {
@@ -173,6 +182,15 @@ namespace dialogue {
         }
     }
 
+    void try_stop_character_talking() {
+        if (currently_talking_character != -1) {
+            // TODO check if it still exists
+            ReadCharacterID(currently_talking_character).ReceiveMessage("stop_talking");
+
+            currently_talking_character = -1;
+        }
+    }
+
     void update() {
         uint total_characters_in_a_line = current_dialogue_line.length();
 
@@ -195,6 +213,7 @@ namespace dialogue {
             // Continue dialogue script if we have displayed all the text that we are waiting for
             if(uint32(line_progress) >= total_characters_in_a_line){
                 is_waiting_for_a_line_to_get_fully_drawn = false;
+                try_stop_character_talking();
                // Play();   
                //dialogue_play();
             }
@@ -213,6 +232,7 @@ namespace dialogue {
             if (is_waiting_for_a_line_to_get_fully_drawn){
                 line_progress = total_characters_in_a_line;
                 is_waiting_for_a_line_to_get_fully_drawn = false;
+                try_stop_character_talking();
             } else if (line_start_time < the_time - 0.5){
                 dialogue_continue(); 
             } else {

@@ -4,6 +4,8 @@ enum Event_Type {
     EVENT_LAST
 }
 
+const string PARAM_SHOW_ALL_POSES = "TriggerKit/Show all poses";
+
 const string HOTSPOT_CAMERA_TYPE = "triggerkit_camera";
 const string HOTSPOT_REGION_TYPE = "triggerkit_region";
 const string HOTSPOT_DIALOGUE_POSE_TYPE = "triggerkit_dialogue_pose";
@@ -44,6 +46,14 @@ float get_param_value_or_zero(ScriptParams@ params, string param) {
     return 0.0f;
 }
 
+void set_or_add_int_param(ScriptParams@ script_params, string param_name, int param_value) {
+    if (script_params.HasParam(param_name)) {
+        script_params.SetInt(param_name, param_value);
+    } else {
+        script_params.AddInt(param_name, param_value);
+    }
+}
+
 void set_or_add_string_param(ScriptParams@ script_params, string param_name, string param_value) {
     if (script_params.HasParam(param_name)) {
         script_params.SetString(param_name, param_value);
@@ -52,12 +62,32 @@ void set_or_add_string_param(ScriptParams@ script_params, string param_name, str
     }
 }
 
+int get_int_param_or_default(ScriptParams@ script_params, string param_name, int default_value = 0) {
+    if (script_params.HasParam(param_name)) {
+        return script_params.GetInt(param_name);
+    }
+
+    return default_value;
+}
+
 string get_string_param_or_default(ScriptParams@ script_params, string param_name, string default_value = "") {
     if (script_params.HasParam(param_name)) {
         return script_params.GetString(param_name);
     }
 
     return default_value;
+}
+
+bool is_selected_safe(int object_id) {
+    if (object_id == -1) {
+        return false;
+    }
+
+    if (!ObjectExists(object_id)) {
+        return false;
+    }
+
+    return ReadObjectFromID(object_id).IsSelected();
 }
 
 // I'm not that smart, taken from

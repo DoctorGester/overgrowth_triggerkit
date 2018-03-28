@@ -5,13 +5,15 @@ int torso_target_id = -1;
 int head_target_id = -1;
 int eye_target_id = -1;
 
+float was_last_selected_at = 0;
+
 quaternion previous_rotation;
 vec3 previous_position;
 string previous_animation;
 
 void try_queue_delete(int& object_id) {
     if (object_id != -1) {
-        QueueDeleteObjectID(object_id);
+        DeleteObjectID(object_id);
         object_id = -1;
     }
 }
@@ -54,6 +56,7 @@ void try_create_and_set_placeholder_object(int& object_id, const string billdboa
 
     ScriptParams@ parent_script_params = parent_object.GetScriptParams();
 
+    set_or_add_int_param(parent_script_params, string_name, object_id);
     set_from_param_value_or_create_param(parent_script_params, string_name + "_x", initial_offset.x);
     set_from_param_value_or_create_param(parent_script_params, string_name + "_y", initial_offset.y);
     set_from_param_value_or_create_param(parent_script_params, string_name + "_z", initial_offset.z);
@@ -127,20 +130,28 @@ void try_delete_placeholder_objects() {
     try_queue_delete(torso_target_id);
     try_queue_delete(head_target_id);
     try_queue_delete(eye_target_id);
-}
 
-bool is_selected_safe(int object_id) {
-    if (object_id == -1) {
-        return false;
+    if (!ObjectExists(hotspot.GetID())) { // When called from Dispose
+        return;
     }
 
-    return ReadObjectFromID(object_id).IsSelected();
+    Object@ hotspot_object = ReadObjectFromID(hotspot.GetID());
+    ScriptParams@ hotspot_params = hotspot_object.GetScriptParams();
+
+    set_or_add_int_param(hotspot_params, "torso", torso_target_id);
+    set_or_add_int_param(hotspot_params, "head", torso_target_id);
+    set_or_add_int_param(hotspot_params, "eye", torso_target_id);
+}
+
+void try_delete_all_companion_objects() {
+    try_queue_delete(preview_character_id);
+    try_delete_placeholder_objects();
+
+    previous_animation = "";
 }
 
 void Dispose() {
-    try_delete_placeholder_objects();
-    try_queue_delete(preview_character_id);
-    previous_animation = "";
+    try_delete_all_companion_objects();
 
     level.StopReceivingLevelEvents(hotspot.GetID());
 }
@@ -148,20 +159,35 @@ void Dispose() {
 void PreDraw(float game_time) {
     Object@ hotspot_object = ReadObjectFromID(hotspot.GetID());
 
+    ScriptParams@ level_script_params = level.GetScriptParams();
+    bool show_all_poses = level_script_params.HasParam(PARAM_SHOW_ALL_POSES) && level_script_params.GetInt(PARAM_SHOW_ALL_POSES) != 0;
+
     bool is_anything_related_selected =
         hotspot_object.IsSelected() ||
         is_selected_safe(torso_target_id) ||
         is_selected_safe(head_target_id) ||
         is_selected_safe(eye_target_id);
 
+    bool has_anything_related_been_recently_selected = (the_time - was_last_selected_at) < 0.2f; 
+
+    if (is_anything_related_selected) {
+        was_last_selected_at = the_time;
+    }
+
+    bool show_this_pose = show_all_poses || has_anything_related_been_recently_selected;
+
     if (preview_character_id != -1) {
-        ReadCharacterID(preview_character_id).visible = is_anything_related_selected;
+        ReadCharacterID(preview_character_id).visible = show_this_pose;
+    }
+
+    if (!show_this_pose) {
+        try_delete_placeholder_objects();
+
+        return;
     }
 
     if (!EditorModeActive()) {
-        try_delete_placeholder_objects();
-        try_queue_delete(preview_character_id);
-        previous_animation = "";
+        try_delete_all_companion_objects();
 
         return;
     }

@@ -253,7 +253,7 @@ Function_Definition@ convert_trigger_to_function_definition(Trigger@ trigger) {
 
     Expression@ condition_wrapper = make_if(assembled_condition, trigger.actions);
 
-    @result.user_code = array<Expression@> = { condition_wrapper };
+    @result.user_code = { condition_wrapper };
 
     return result;
 }
@@ -536,10 +536,10 @@ Api_Builder@ build_api() {
 
     api
         .func("dialogue_say", api::dialogue_say)
-        .name("Say")
+        .name("Make character talk")
         .fmt("> {}: {}")
         .category(CATEGORY_DIALOGUE)
-        .takes(LITERAL_TYPE_STRING)
+        .takes(LITERAL_TYPE_CHARACTER)
         .takes(LITERAL_TYPE_STRING);
 
     api
@@ -550,22 +550,26 @@ Api_Builder@ build_api() {
 
     api
         .func("take_camera_control", api::take_camera_control)
+        .name("Take camera control")
         .fmt("Take camera control")
         .category(CATEGORY_CAMERA);
 
     api
         .func("release_camera_control", api::release_camera_control)
+        .name("Release camera control")
         .fmt("Release camera control")
         .category(CATEGORY_CAMERA);
 
     api
         .func("set_current_camera", api::set_current_camera)
+        .name("Set camera")
         .fmt("Set camera to {}")
         .category(CATEGORY_CAMERA)
         .takes(LITERAL_TYPE_CAMERA);
 
     api
         .func("transition_camera", api::transition_camera)
+        .name("Move camera over time")
         .fmt("Move camera from {} to {} over {} seconds with {} interpolation")
         .category(CATEGORY_CAMERA)
         .takes(LITERAL_TYPE_CAMERA)
@@ -609,10 +613,12 @@ Api_Builder@ build_api() {
     api
         .func("wait_until_dialogue_line_is_complete", api::wait_until_dialogue_line_is_complete())
         .category(CATEGORY_WAIT)
+        .name("Wait for the dialogue line to end")
         .fmt("Wait for the dialogue line to end");
 
     api
         .func("wait", api::wait())
+        .name("Wait")
         .fmt("Wait for {} seconds")
         .takes(LITERAL_TYPE_NUMBER, "seconds")
         .category(CATEGORY_WAIT);
@@ -782,13 +788,6 @@ namespace api {
         ctx.return_string(ctx.take_number() + "");
     }
 
-    void dialogue_say(Native_Call_Context@ ctx) {
-        string who = ctx.take_string();
-        string what = ctx.take_string();
-
-        dialogue::say(who, what);
-    }
-
     void start_dialogue(Native_Call_Context@ ctx) {
         // TODO warning if is already in it
 
@@ -806,11 +805,41 @@ namespace api {
             int participant_id = environment::dialogue_participants[participant_index];
 
             if (MovementObjectExists(participant_id)) {
+                // TODO No idea why do I have to do this, the animation should reset by itself?
+                ReadCharacterID(participant_id).ReceiveScriptMessage("set_animation \"Data/Animations/r_idle.anm\"");
                 ReadCharacterID(participant_id).ReceiveScriptMessage("set_dialogue_control false");
+                Log(info, "set_dialogue_control false " + participant_id);
             }
         }
 
         environment::dialogue_participants.resize(0);
+    }
+
+    void dialogue_say(Native_Call_Context@ ctx) {
+        int who_id = ctx.take_handle_id();
+        string what = ctx.take_string();
+
+        // TODO error if not in dialogue
+        // TODO error if character not added to dialogue
+
+        if (!MovementObjectExists(who_id)) {
+            // TODO error
+        }
+
+        Object@ speaker_as_object = ReadObjectFromID(who_id);
+        string speaker_name = speaker_as_object.GetName();
+
+        dialogue::set_current_text(speaker_name, what);
+        dialogue::make_character_talk(who_id);
+    }
+
+    void set_current_dialogue_text(Native_Call_Context@ ctx) {
+        string who = ctx.take_string();
+        string what = ctx.take_string();
+
+        // TODO error if not in dialogue
+
+        dialogue::set_current_text(who, what);
     }
 
     void is_in_dialogue(Native_Call_Context@ ctx) {
@@ -952,7 +981,9 @@ namespace api {
 
         MovementObject@ character = ReadCharacterID(character_id);
 
-        character.FixDiscontinuity();
+        //character.FixDiscontinuity();
+
+        vec3 previous_character_position = character.position;
 
         set_character_position_and_rotation_from_pose(character_id, pose_id);
 
@@ -966,7 +997,11 @@ namespace api {
             character.ReceiveScriptMessage("set_animation \"" + animation + "\"");
         }
 
-        character.Execute("FixDiscontinuity();");
+        float distance_delta = length(previous_character_position - character.position);
+
+        if (distance_delta > 0.1) {
+            character.Execute("FixDiscontinuity();");
+        }
     }
 
     void set_character_dialogue_position(Native_Call_Context@ ctx) {
@@ -1052,8 +1087,8 @@ namespace api {
     array<Expression@>@ wait_until_dialogue_line_is_complete() {
         // TODO error/warning if not in dialogue!
 
-        return array<Expression@> = {
-            make_while(make_function_call("is_in_dialogue"), array<Expression@> = {
+        return {
+            make_while(make_function_call("is_in_dialogue"), {
                 make_function_call("sleep")
             })
         };
@@ -1065,9 +1100,9 @@ namespace api {
         Expression@ target_time_declaration = make_declaration(LITERAL_TYPE_NUMBER, "target_time", target_time);
         Expression@ condition = make_op_expr(OPERATOR_LT, get_time, make_ident("target_time"));
 
-        return array<Expression@> = {
+        return {
             target_time_declaration,
-            make_while(condition, array<Expression@> = {
+            make_while(condition, {
                 make_function_call("sleep")
             })
         };

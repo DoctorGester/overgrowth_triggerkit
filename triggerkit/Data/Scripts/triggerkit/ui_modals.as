@@ -1,3 +1,5 @@
+funcdef bool Selection_Resolver(Object@ object);
+
 void draw_globals_modal() {
     if (icon_button("New variable", "variable_add", icons::action_variable)) {
         state.global_variables.insertLast(make_variable(LITERAL_TYPE_NUMBER, "New variable"));
@@ -83,7 +85,11 @@ void set_camera_to_view(Object@ camera_hotspot) {
     camera_hotspot.SetRotation(rotation);
 }
 
-array<Object@> draw_objects_list_and_return_selected(array<Object@>@ content, Name_Resolver@ name_resolver, TextureAssetRef icon) {
+bool is_object_selected(Object@ object) {
+    return object.IsSelected();
+}
+
+array<Object@> draw_objects_list_and_return_selected(array<Object@>@ content, Name_Resolver@ name_resolver, Selection_Resolver@ selection_resolver, TextureAssetRef icon) {
     array<Object@> selected;
 
     for (uint object_index = 0; object_index < content.length(); object_index++) {
@@ -94,10 +100,10 @@ array<Object@> draw_objects_list_and_return_selected(array<Object@>@ content, Na
         ImGui_SameLine();
         ImGui_SetCursorPosY(ImGui_GetCursorPosY() + 2);
 
-        bool is_selected = object.IsSelected();
+        bool is_selected = selection_resolver(object);
 
         if (ImGui_Selectable(name_resolver(object.GetID()), is_selected)) {
-            object.SetSelected(!is_selected);
+            select_object_safe(object.GetID());
         }
 
         if (is_selected) {
@@ -111,7 +117,7 @@ array<Object@> draw_objects_list_and_return_selected(array<Object@>@ content, Na
 void draw_cameras_window() {
     ImGui_ListBoxHeader("###cameras_list", size: vec2(-1, ImGui_GetWindowHeight() - 160)); // -60 = 1 button exactly
 
-    array<Object@>@ selected_cameras = draw_objects_list_and_return_selected(list_camera_objects(), camera_id_to_camera_name, icons::action_camera);
+    array<Object@>@ selected_cameras = draw_objects_list_and_return_selected(list_camera_objects(), camera_id_to_camera_name, is_object_selected, icons::action_camera);
 
     ImGui_ListBoxFooter();
 
@@ -180,10 +186,48 @@ class Named_Animation {
     }
 }
 
-void draw_poses_window() {
-    ImGui_ListBoxHeader("###poses_list", size: vec2(-1, ImGui_GetWindowHeight() - 160)); // -60 = 1 button exactly
+bool is_pose_selected(Object@ pose) {
+    if (pose.IsSelected()) {
+        return true;
+    }
 
-    array<Object@>@ selected_poses = draw_objects_list_and_return_selected(list_pose_objects(), pose_id_to_pose_name, icons::action_pose);
+    ScriptParams@ pose_params = pose.GetScriptParams();
+
+    int torso_id = get_int_param_or_default(pose_params, "torso", -1);
+    int head_id = get_int_param_or_default(pose_params, "head", -1);
+    int eye_id = get_int_param_or_default(pose_params, "eye", -1);
+
+    return is_selected_safe(torso_id) || is_selected_safe(head_id) || is_selected_safe(eye_id);
+}
+
+void select_object_safe(int target_object_id, bool exclusive = true) {
+    if (target_object_id == -1 || !ObjectExists(target_object_id)) {
+        return;
+    }
+
+    if (exclusive) {
+        array<int>@ all_object_ids = GetObjectIDs();
+
+        for (uint object_index = 0; object_index < all_object_ids.length(); object_index++) {
+            int object_id = all_object_ids[object_index];
+
+            if (ObjectExists(object_id)) {
+                Object@ object = ReadObjectFromID(object_id);
+
+                if (object.IsSelected()) {
+                    object.SetSelected(false);
+                }
+            }
+        }
+    }
+
+    ReadObjectFromID(target_object_id).SetSelected(true);
+}
+
+void draw_poses_window() {
+    ImGui_ListBoxHeader("###poses_list", size: vec2(-1, ImGui_GetWindowHeight() - 210)); // -60 = 1 button exactly
+
+    array<Object@>@ selected_poses = draw_objects_list_and_return_selected(list_pose_objects(), pose_id_to_pose_name, is_pose_selected, icons::action_pose);
 
     ImGui_ListBoxFooter();
 
@@ -241,9 +285,9 @@ void draw_poses_window() {
         }
 
         const int ImGuiComboFlags_NoArrowButton = 1 << 5;
-        float w = ImGui_GetWindowWidth() - 86;//ImGui_CalcItemWidth();
+        float w = ImGui_CalcItemWidth();
         float spacing = 4;//style.ItemInnerSpacing.x;
-        float button_sz = 28;//ImGui_GetFrameHeight();
+        float button_sz = ImGui_GetFrameHeight();
         ImGui_PushItemWidth(int(w - spacing * 2.0f - button_sz * 2.0f));
 
         if (ImGui_BeginCombo("##animation_combo", preview_text, ImGuiComboFlags_NoArrowButton)) {
@@ -262,20 +306,57 @@ void draw_poses_window() {
         ImGui_PopItemWidth();
         ImGui_SameLine(0, spacing);
 
-        if (ImGui_Button("<") && selected_index > 0) {
+        if (ImGui_Button("<", vec2(button_sz)) && selected_index > 0) {
             set_or_add_string_param(script_params, "Animation", default_animations[uint(--selected_index)].to_full_path());
         }
 
         ImGui_SameLine(0, spacing);
 
-        if (ImGui_Button(">") && selected_index < int(default_animations.length()) - 1) {
+        if (ImGui_Button(">", vec2(button_sz)) && selected_index < int(default_animations.length()) - 1) {
             set_or_add_string_param(script_params, "Animation", default_animations[uint(++selected_index)].to_full_path());
         }
 
         ImGui_SameLine(0, spacing);
         ImGui_Text("Animation");
+
+        // TODO need to be able to capture if CTRL is pressed and set exclusive to false in select_object_safe
+        if (icon_button("Torso", "select_torso", icons::poses_torso)) {
+            select_object_safe(get_int_param_or_default(script_params, "torso", -1));
+        }
+
+        ImGui_SameLine();
+
+        if (icon_button("Head", "select_head", icons::poses_head)) {
+            select_object_safe(get_int_param_or_default(script_params, "head", -1));
+        }
+
+        ImGui_SameLine();
+
+        if (icon_button("Eyes", "select_eyes", icons::poses_eye)) {
+            select_object_safe(get_int_param_or_default(script_params, "eye", -1));
+        }
+
+        if (icon_button("Duplicate", "pose_duplicate", icons::action_pose)) {
+            int pose_id = DuplicateObject(selected);
+
+            if (pose_id == -1) {
+                Log(error, "Fatal error: was not able to duplicate a pose object");
+                return;
+            }
+
+            select_object_safe(pose_id);
+        }
     } else {
         ImGui_Text(selected_poses.length() == 0 ? "None" : selected_poses.length() + " poses");
+    }
+
+    ImGui_Separator();
+
+    ScriptParams@ level_script_params = level.GetScriptParams();
+    bool show_all_poses = level_script_params.GetInt(PARAM_SHOW_ALL_POSES) != 0;
+
+    if (ImGui_Checkbox("Show all poses", show_all_poses)) {
+        level_script_params.SetInt(PARAM_SHOW_ALL_POSES, show_all_poses ? 1 : 0);
     }
 
     if (icon_button("New pose", "pose_add", icons::action_pose)) {

@@ -25,7 +25,7 @@ string serialize_trigger_state_into_text(Trigger_Kit_State@ state) {
         Trigger@ trigger = state.triggers[trigger_index];
 
         string trigger_metadata = KEYWORD_TRIGGER + " " + serializeable_string(trigger.name) + "\n" + serializeable_string(trigger.description);
-        string trigger_as_text = join(array<string> = {
+        string trigger_as_text = join({
             KEYWORD_TRIGGER + " " + serializeable_string(trigger.name) + " " + KEYWORD_START_BLOCK,
             "\t" + KEYWORD_DESCRIPTION + " " + serializeable_string(trigger.description),
             "\t" + KEYWORD_EVENT + " " + event_type_to_serializeable_string(trigger.event_type),
@@ -192,7 +192,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
 
     switch (expression.type) {
         case EXPRESSION_OPERATOR: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_OPERATOR,
                 operator_type_to_serializeable_string(expression.operator_type),
                 serialize_expression_to_string(expression.left_operand, indent),
@@ -201,7 +201,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
         }
 
         case EXPRESSION_DECLARATION: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_DECLARE,
                 literal_type_to_serializeable_string(expression.literal_type),
                 serializeable_string(expression.identifier_name),
@@ -210,7 +210,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
         }
             
         case EXPRESSION_ASSIGNMENT: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_ASSIGN,
                 serializeable_string(expression.identifier_name),
                 serialize_expression_to_string(expression.value_expression, indent)
@@ -219,7 +219,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
 
         case EXPRESSION_IDENTIFIER: return KEYWORD_IDENTIFIER + " " + serializeable_string(expression.identifier_name);
         case EXPRESSION_LITERAL: {
-            return join(array<string> = {
+            return join({
                 KEYWORD_LITERAL,
                 literal_type_to_serializeable_string(expression.literal_type),
                 literal_to_serializeable_string(expression.literal_type, expression.literal_value)
@@ -227,7 +227,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
         }
 
         case EXPRESSION_CALL: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_CALL,
                 expression.identifier_name,
                 serialize_expression_block(expression.arguments, indent, false)
@@ -235,14 +235,14 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
         }
 
         case EXPRESSION_RETURN: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_RETURN,
                 serialize_expression_to_string(expression.value_expression, indent)
             }, " ");
         }
 
         case EXPRESSION_REPEAT: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_REPEAT,
                 serialize_expression_to_string(expression.value_expression, indent),
                 serialize_expression_block(expression.block_body, indent)
@@ -250,7 +250,7 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
         }
 
         case EXPRESSION_WHILE: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_WHILE,
                 serialize_expression_to_string(expression.value_expression, indent),
                 serialize_expression_block(expression.block_body, indent)
@@ -258,14 +258,14 @@ string serialize_expression_to_string(Expression@ expression, string indent, boo
         }
 
         case EXPRESSION_FORK: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_FORK,
                 serialize_expression_block(expression.block_body, indent)
             }, " ");
         }
 
         case EXPRESSION_IF: {
-            return real_indent + join(array<string> = {
+            return real_indent + join({
                 KEYWORD_IF,
                 serialize_expression_to_string(expression.value_expression, indent),
                 serialize_expression_block(expression.block_body, indent)

@@ -189,6 +189,14 @@ void draw_icon_menu_bar() {
         state.is_poses_window_open = !state.is_poses_window_open;
     }
 
+    ImGui_SameLine();
+
+    if (icon_button("Save", "save_state", icons::action_other)) {
+        save_trigger_state_into_level_params(state);
+        initialize_state_and_vm();
+        compile_everything();
+    }
+
     ImGui_EndGroup();
 }
 
@@ -379,6 +387,8 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame) {
 
     ImGui_Text("Action category");
 
+    ImGui_PushItemWidth(300);
+
     if (ImGui_BeginCombo(frame.unique_id("category_selector"), function_category_to_string(selected_category))) {
         for (Function_Category category = Function_Category(0); category < CATEGORY_LAST; category++) {
             if (ImGui_Selectable(function_category_to_string(category), category == selected_category)) {
@@ -398,6 +408,8 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame) {
 
         ImGui_EndCombo();
     }
+
+    ImGui_PopItemWidth();
 
     array<Function_Definition@>@ source_functions = filter_function_definitions_for_statement_popup(selected_category);
 
@@ -429,6 +441,7 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame) {
 
     ImGui_Text("Action type");
 
+    ImGui_PushItemWidth(300);
     if (ImGui_BeginCombo(frame.unique_id("function_selector"), function_preview_text)) {
         if (selected_category == CATEGORY_NONE) {
             for (uint action_index = 0; action_index < special_actions.length(); action_index++) {
@@ -459,6 +472,8 @@ void draw_statement_editor_popup(Ui_Frame_State@ frame) {
 
         ImGui_EndCombo();
     }
+
+    ImGui_PopItemWidth();
 
     ImGui_NewLine();
     ImGui_Separator();
@@ -527,7 +542,7 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_edito
 
     Variable@ selected_variable = null;
     
-    ImGui_PushItemWidth(-1);
+    ImGui_PushItemWidth(300);
 
     if (draw_variable_selector(frame, expression, selected_variable, limit_to)) {
         expression.type = EXPRESSION_IDENTIFIER;
@@ -547,7 +562,7 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_edito
 
     ImGui_SameLine();
     ImGui_SetCursorPosX(offset);
-    ImGui_PushItemWidth(-1);
+    ImGui_PushItemWidth(300);
 
     draw_editor_popup_function_selector(expression, frame, limit_to);
 
@@ -570,7 +585,9 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_edito
         ImGui_SameLine();
         ImGui_SetCursorPosX(offset);
 
-        if (draw_editable_literal(expression.literal_type, expression.literal_value, frame.unique_id("editable_literal"))) {
+        Literal_Type literal_type = limit_to != LITERAL_TYPE_VOID ? limit_to : expression.literal_type;
+
+        if (draw_editable_literal(literal_type, expression.literal_value, frame.unique_id("editable_literal"))) {
             expression.type = EXPRESSION_LITERAL;
             expression.literal_type = limit_to;
         }
@@ -590,7 +607,7 @@ void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, boo
 
     ImGui_PushStyleVar(ImGuiStyleVar_WindowPadding, vec2(15));
 
-    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter + frame.argument_counter, is_open, ImGuiWindowFlags_ResizeFromAnySide)) {
+    if (ImGui_BeginPopupModal("Edit###Popup" + frame.popup_stack_level + frame.line_counter + frame.argument_counter, is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
         frame.popup_stack_level++;
 
         // I'm not sure if there is a way to get the default stylevar value

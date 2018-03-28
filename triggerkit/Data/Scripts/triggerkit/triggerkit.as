@@ -1,3 +1,47 @@
+// Public beta:
+// Undo/Redo/Cancel. The way to do it: just keep a buffer of serialized code versions and have a push_trigger_state function called at certain times
+// Cut/Copy/Paste
+// Multi selection
+// Proper error reporting: compiler goes through the whole thing and gives a list of Compiler_Error which have trigger name and line numbers, 
+//                         highlight them and exclude related triggers from compilation
+// Serialization format versioning
+// Fix some todos
+// Break expression
+// Fix the return expression + return in UI
+// Hide all non-void returns in statement editor popup, but add an exception boolean which would allow functions like CreateCharacter to be there
+// Newbie mode: hide poweruser expressions and advanced functions
+// We need to be able to put cameras/poses/regions into categories
+// Filter out pose placeholder characters from the character literal selector (we could just filter by no-save attribute)
+// Add a "Show all cameras" checkbox akin to poses
+// Dialogue:
+//  should get rid of placement_type lol
+//  fade in/out
+//  get current camera
+//  enter skipping
+// After the latest update modal window positions are not set correctly, look into it
+// BUG: when adding a new condition default operator value is not filled at all (because we set it to do_nothing)
+// BUG: when editing an expression, other expressions under it get their state thrown around due to expression_index changing,
+//      we should tie stateful elements to line counter instead (example: if statement blocks)
+// Should be able to add an expression as a first expression in the block even there are expressions already
+/*
+API:
+    Event: Character dies
+    Event: Character exits a region
+    Set character on fire
+    Restore character's health
+    Move character to location
+    Kill character
+    Ragdoll character
+    Create an item at location
+    Give item to character
+    Launch item
+    Delete an item
+    Load level
+    Checkpoint API
+    Music API
+    Sound API
+*/
+
 // Operators todos:
 //  Work on parenthesis elimination. Long chains of additions shouldn't have parenthesis at all.
 //      This is easy to handle, not sure if we can devise a more general solution though.
@@ -6,18 +50,11 @@
 //  from it and will fail to determine the operator. This can be prevented by somehow caching the expression type in
 //  the expression itself and falling back to that type if we failed to determine one.
 
-// Undo/Redo/Cancel. The way to do it: just keep a buffer of serialized code versions and have a push_trigger_state function called at certain times
-// Serialization format versioning
-// Proper error reporting: compiler goes through the whole thing and gives a list of Compiler_Error which have trigger name and line numbers, 
-//                         highlight them and exclude related triggers from compilation
-// Fix some todos
-// Break expression, fix the return expression, user functions UI
+// User functions UI
 // Figure out another demo with proper dialogues
 // Make even more demos, abandon this one!
-// Varargs for string concatenation? We could combine them into an array and pass that easily
 // We WILL need expressions or some kind of parameter selection in events, example: Every X seconds
 //  Alternatively Every X seconds can be easily implemented with while (true) wait
-// Hide all non-void returns in statement editor popup, but add an exception boolean which would allow functions like CreateCharacter to be there
 
 // UI: User functions!
 // Compiler: Actual function types so we could get rid of EXPRESSION_FORK and the whole strapped on event architecture
@@ -31,8 +68,6 @@
 //  This gets rid of useless (?) function/variable selectors
 // We desperately need newlines in action dialogue
 // Dialogue milestones:
-//  Enums:
-//    Poses
 //  Enter dialogue skipping
 //  Figure out how to implement [wait .. 0.4] in our dialogues (maybe some special mode which doesn't trigger "click to proceed?")
 //  Implement Dialogue append string ([wait for click])
@@ -45,21 +80,16 @@
 //      Fade in/fade out
 //      Checkpoints
 //      Maybe we could have something like have actual race contestants? I dunno
-// BUG: when adding a new condition default operator value is not filled at all (because we set it to do_nothing)
-// After the latest update modal window positions are not set correctly, look into it
 // We don't really need to show empty combos now, need to look into it if it's not possible
 //  We could also just draw a text which says "no values available" or whatever
-// BUG: when editing an expression, other expressions under it get their state thrown around due to expression_index changing,
-//      we should tie stateful elements to line counter instead (example: if statement blocks)
 // Figure out expression editor modal size issues, we need to have minimum size and dynamically adapt the expressions for the size
-// Dialogue:
-//  should get rid of placement_type lol
-//  start/stop talking
-//  fade in/out
-//  get current camera
-//  enter skipping
 // We could add category icons to the categories combo (need a custom selectable-like) component for that
-// We need to be able to put cameras/poses/regions into categories
+// An ability to select character preview for poses. Select a concrete character and then hide that respective character when a pose is selected
+// An ability to make functions with array arguments so you could do "Start dialogue with [Turner, Janner]" for example
+// Collapse dialogue_say into say + wait
+// Enable some key which allows typing a literal value in-place
+// Function search
+
 
 #include "triggerkit/ui.as"
 #include "triggerkit/vm.as"
@@ -108,11 +138,11 @@ array<Expression@>@ make_test_expression_array() {
     Expression@ condition = Expression();
     condition.type = EXPRESSION_IF;
     @condition.value_expression = make_op_expr(OPERATOR_LT, make_ident("my_var2"), make_lit(5));
-    condition.block_body = array<Expression@> = {
+    condition.block_body = {
         log2
     };
 
-    condition.else_block_body = array<Expression@> = {
+    condition.else_block_body = {
         log2,
         wait
     };
@@ -120,7 +150,7 @@ array<Expression@>@ make_test_expression_array() {
     Expression@ condition2 = Expression();
     condition2.type = EXPRESSION_IF;
     @condition2.value_expression = and_op;
-    condition2.block_body = array<Expression@> = {
+    condition2.block_body = {
         log1
     };
 
@@ -128,7 +158,7 @@ array<Expression@>@ make_test_expression_array() {
     repeat.type = EXPRESSION_REPEAT;
     @repeat.value_expression = make_lit(10);
     //repeat.block_body.insertLast(sub);
-    repeat.block_body = array<Expression@> = {
+    repeat.block_body = {
         make_declaration(LITERAL_TYPE_NUMBER,"My boy named \"Bucko\"", make_lit(3)),
         make_declaration(LITERAL_TYPE_NUMBER,"My funky var", make_lit(3)),
         make_declaration(LITERAL_TYPE_NUMBER,"my_var2", make_ident("my_var")),
@@ -329,6 +359,14 @@ void DrawGUI() {
     environment::draw();
 
     if (EditorModeActive()) {
+        // TODO this should be a config param
+        // TODO pull out this and related code somewhere else
+        ScriptParams@ level_script_params = level.GetScriptParams();
+
+        if (!level_script_params.HasParam(PARAM_SHOW_ALL_POSES)) {
+            level_script_params.AddIntCheckbox(PARAM_SHOW_ALL_POSES, false);
+        }
+
         ImGui_Begin("My_Debug_Win", ImGuiWindowFlags_MenuBar);
 
         if (ImGui_Button("Restart VM and Reload state")) {
