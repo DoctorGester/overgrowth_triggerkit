@@ -317,7 +317,7 @@ void compile_everything() {
 
     Log(info, "load_state_and_compile_code :: " + translation_context.expressions_translated + " expressions translated, took " + get_time_delta_in_ms(time) + "ms");
 
-    // print_compilation_debug_info(translation_context);
+    print_compilation_debug_info(translation_context);
 }
 
 void Init(string p_level_name) {

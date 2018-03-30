@@ -201,6 +201,9 @@ string instruction_type_to_string(Instruction_Type instruction_type) {
         case INSTRUCTION_TYPE_EQ_ZERO: return "EQ ZERO";
         case INSTRUCTION_TYPE_EQ_NOT_ZERO: return "EQ NOT ZERO";
         case INSTRUCTION_TYPE_LT: return "LT";
+        case INSTRUCTION_TYPE_GT: return "GT";
+        case INSTRUCTION_TYPE_GE: return "GE";
+        case INSTRUCTION_TYPE_LE: return "LE";
 
         case INSTRUCTION_TYPE_NOT: return "NOT";
         case INSTRUCTION_TYPE_DUP: return "DUP";
@@ -235,6 +238,7 @@ string instruction_to_string(Instruction@ instruction) {
         case INSTRUCTION_TYPE_NATIVE_CALL:
         case INSTRUCTION_TYPE_CALL:
         case INSTRUCTION_TYPE_RESERVE:
+        case INSTRUCTION_TYPE_RET:
              return type_as_string + " " + arg_as_string;
     }
 
@@ -447,6 +451,8 @@ namespace instructions {
     }
 
     void ret(Thread@ thread, Instruction@ instruction) {
+        thread.stack_top -= instruction.int_arg;
+
         // Means we are returning from main
         if (thread.stack_top == 0) {
             Log(info, "Returning from main");

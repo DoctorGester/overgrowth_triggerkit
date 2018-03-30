@@ -629,6 +629,12 @@ Api_Builder@ build_api() {
         .takes(LITERAL_TYPE_VECTOR_3, "from")
         .takes(LITERAL_TYPE_VECTOR_3, "to");
 
+    api
+        .func("fib", api::fib())
+        .fmt("Compute Fibonacci for {}")
+        .returns(LITERAL_TYPE_NUMBER)
+        .takes(LITERAL_TYPE_NUMBER, "n");
+
     api.verify();
 
     return api;
@@ -1118,6 +1124,18 @@ namespace api {
                     call set_camera_location ( @ "Current Location" $ Vector3 0 0 0 ) 
                     call sleep ( ) 
                 ) 
+            )
+        """;
+
+        return parse_text_into_expression_array(code);
+    }
+
+    array<Expression@> fib() {
+        string code = """
+            if op <= @ "n" $ Number 1 (
+                return @ "n"
+            ) else (
+                return op + call fib ( op - @ "n" $ Number 1 ) call fib ( op - @ "n" $ Number 2 )
             )
         """;
 

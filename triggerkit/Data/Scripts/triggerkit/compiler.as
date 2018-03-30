@@ -91,6 +91,7 @@ class Function_Translation_Unit {
     uint local_variable_index = 0;
     Variable_Scope@ variable_scope;
     Function_Definition@ definition;
+    array<uint> ret_instructions_to_backpatch;
 }
 
 class Variable_Scope {
@@ -388,10 +389,15 @@ uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_
     Function_Translation_Unit@ popped_unit = pop_function_translation_unit(ctx);
 
     uint function_reserved_space = popped_unit.local_variable_index;
-    emit_instruction(make_instruction(INSTRUCTION_TYPE_RESERVE, -function_reserved_space), target); 
     target[reserve_location].int_arg = function_reserved_space;
 
-    emit_instruction(make_instruction(INSTRUCTION_TYPE_RET), target);
+    for (uint instruction_index = 0; instruction_index < popped_unit.ret_instructions_to_backpatch.length(); instruction_index++) {
+        uint ret_address = popped_unit.ret_instructions_to_backpatch[instruction_index];
+        Log(info, "rr" + ret_address);
+        ctx.code[ret_address].int_arg = function_reserved_space;
+    }
+
+    emit_instruction(make_instruction(INSTRUCTION_TYPE_RET, function_reserved_space), target);
 
     return function_location;
 }
@@ -597,9 +603,15 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
         }
 
         case EXPRESSION_RETURN: {
-            // TODO also emit a RET instruction there!
+            Function_Translation_Unit@ current_function_translation_unit = get_current_function_translation_unit(ctx);
+
             emit_expression_bytecode(ctx, expression.value_expression);
             emit_instruction(make_instruction(INSTRUCTION_TYPE_RETURN), target);
+            emit_instruction(make_instruction(INSTRUCTION_TYPE_RET), target);
+
+            uint ret_address = target.length() - 1;
+
+            current_function_translation_unit.ret_instructions_to_backpatch.insertLast(ret_address);
 
             break;
         }
