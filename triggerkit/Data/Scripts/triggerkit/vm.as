@@ -430,8 +430,9 @@ namespace instructions {
 
     void call(Thread@ thread, Instruction@ instruction) {
         // TODO ugh! Dirty implicit constant
-        uint function_pointer = uint(thread.vm.constant_pool[instruction.int_arg].number_value);
-        uint number_of_arguments = uint(thread.vm.constant_pool[instruction.int_arg + 1].number_value);
+        uint data_pointer = instruction.int_arg;
+        uint function_pointer = uint(thread.vm.constant_pool[data_pointer].number_value);
+        uint number_of_arguments = uint(thread.vm.constant_pool[data_pointer + 1].number_value);
 
         array<Memory_Cell> arguments_array_copy;
 
@@ -446,6 +447,8 @@ namespace instructions {
         thread.current_instruction = function_pointer;
 
         for (uint argument_index = 0; argument_index < number_of_arguments; argument_index++) {
+            // TODO thread.stack_top + argument_index??? If the stack was not preallocated this would
+            //      crash spectacularly. The RESERVE instruction should go and the call should move the stack pointer right there
             thread_stack_store(thread, thread.stack_top + argument_index, arguments_array_copy[argument_index]);
         }
     }

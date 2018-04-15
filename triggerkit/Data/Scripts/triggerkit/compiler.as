@@ -78,8 +78,23 @@ class Translation_Context {
     array<Memory_Cell> constants;
     Variable_Scope global_variable_scope;
 
+    array<Compiler_Error> compiler_errors;
+
+    Site current_site;
+
     // Debug info
     uint expressions_translated = 0;
+}
+
+// TODO need to support user functions as well
+class Site {
+    uint trigger_index;
+    uint line_number;
+}
+
+class Compiler_Error {
+    Site error_site;
+    string message;
 }
 
 class Instruction_To_Backpatch {
@@ -100,6 +115,14 @@ class Variable_Scope {
     // TODO pretty dirty, we don't really need both indicies and variables here
     array<Variable>@ variables;
     dictionary local_variable_indices;
+}
+
+void report_compiler_error(Translation_Context@ ctx, string error_message) {
+    Compiler_Error error;
+    error.error_site = ctx.current_site;
+    error.message = error_message;
+
+    ctx.compiler_errors.insertLast(error);
 }
 
 Translation_Context@ prepare_translation_context() {
@@ -355,9 +378,7 @@ uint find_variable_location(Translation_Context@ ctx, string name, bool& reached
     int variable_location = find_variable_location_hierarchical(current_function_translation_unit.variable_scope, name, reached_root_scope);
 
     if (variable_location == -1) {
-        PrintCallstack();
-        Log(error, "Variable " + name + " not found");
-        assert(false);
+        report_compiler_error(ctx, "Variable " + name + " not found");
     }
 
     return uint(variable_location);
@@ -393,7 +414,6 @@ uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_
 
     for (uint instruction_index = 0; instruction_index < popped_unit.ret_instructions_to_backpatch.length(); instruction_index++) {
         uint ret_address = popped_unit.ret_instructions_to_backpatch[instruction_index];
-        Log(info, "rr" + ret_address);
         ctx.code[ret_address].int_arg = function_reserved_space;
     }
 
@@ -671,33 +691,15 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                 emit_instruction(make_load_instruction(slot), target);
             }
 
-            //Anonymous_Function_Content anonymous_function;
-            //anonymous_function.call_site_address_holder_address = target.length();
-
             // TODO should probably cache that
             Function_Definition@ fork_definition = find_function_definition(ctx, "fork");
             uint fork_index = find_or_declare_native_function_index(ctx, fork_definition);
-
-           /*for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
-                emit_expression_bytecode(ctx, expression.arguments[argument_index]);
-            }*/
 
             function_definition.call_site = target.length();
             ctx.function_definition_queue.insertLast(function_definition);
 
             emit_instruction(make_load_const_instruction(0), target);
             emit_instruction(make_native_call_instruction(fork_index), target);
-
-            //ctx.anonymous_functions.insertLast(anonymous_function);
-
-            /*emit_user_function(ctx, function_definition, expression.block_body);
-
-            Anonymous_Function_Content anonymous_function;
-            anonymous_function.call_site_address_holder_address = target.length();
-
-            emit_instruction(make_load_const_instruction(0), target);
-
-            ctx.anonymous_functions.insertLast(anonymous_function);*/
 
             break;
         }
@@ -720,16 +722,17 @@ void compile_user_functions(Translation_Context@ translation_context) {
 
         if (!function.native) {
             uint function_location = emit_user_function(translation_context, function, function.user_code);
-            uint const_id = find_or_save_number_const(translation_context, function_location);
+            uint function_data_pointer = translation_context.constants.length();
 
             // TODO Saving consts contigiously in memory, dirty! Possible solutions?
+            translation_context.constants.insertLast(make_memory_cell(function_location));
             translation_context.constants.insertLast(make_memory_cell(function.argument_types.length));
 
             if (function.anonymous) {
                 // TODO that is just weird...
-                translation_context.code[function.call_site].int_arg = find_or_save_number_const(translation_context, const_id);
+                translation_context.code[function.call_site].int_arg = find_or_save_number_const(translation_context, function_data_pointer);
             } else {
-                translation_context.user_function_indices[function.function_name] = const_id;
+                translation_context.user_function_indices[function.function_name] = function_data_pointer;
             }
         }
 

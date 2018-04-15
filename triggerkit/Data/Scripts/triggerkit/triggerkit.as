@@ -1,4 +1,4 @@
-// Public beta:
+//                  Public beta:
 // Undo/Redo/Cancel. The way to do it: just keep a buffer of serialized code versions and have a push_trigger_state function called at certain times
 // Cut/Copy/Paste
 // Multi selection
@@ -19,10 +19,19 @@
 //  get current camera
 //  enter skipping
 // After the latest update modal window positions are not set correctly, look into it
+// BUG: in variables window Text type variable editor doesn't work
 // BUG: when adding a new condition default operator value is not filled at all (because we set it to do_nothing)
 // BUG: when editing an expression, other expressions under it get their state thrown around due to expression_index changing,
 //      we should tie stateful elements to line counter instead (example: if statement blocks)
 // Should be able to add an expression as a first expression in the block even there are expressions already
+// Spawning a placeholder camera object makes imgui camera preview window appear, we could incorporate that into our cameras
+// Folder hierarchy in trigger list (with icons)
+// Paint a trigger red when there are errors
+// Hard problem: we need a concrete solution on playtesting a level and cancelling all changes made by triggers
+//               could maybe save as much state as we could and have a "Playtest" button which resets to this state?
+//               Although doesn't level reset just handle that? If we do not move the actual character's 'object' boxes it
+//               should work just fine
+
 /*
 API:
     Event: Character dies
@@ -42,6 +51,7 @@ API:
     Sound API
 */
 
+//                  Low priority:
 // Operators todos:
 //  Work on parenthesis elimination. Long chains of additions shouldn't have parenthesis at all.
 //      This is easy to handle, not sure if we can devise a more general solution though.
@@ -49,7 +59,7 @@ API:
 //  if we delete a variable/user function which is used in an operator we won't be able to infer a type
 //  from it and will fail to determine the operator. This can be prevented by somehow caching the expression type in
 //  the expression itself and falling back to that type if we failed to determine one.
-
+// Add an ability to Star functions. Starred functions could be shown on top of function selection combos and prioritized in search
 // User functions UI
 // Figure out another demo with proper dialogues
 // Make even more demos, abandon this one!
@@ -70,6 +80,7 @@ API:
 // Dialogue milestones:
 //  Enter dialogue skipping
 //  Figure out how to implement [wait .. 0.4] in our dialogues (maybe some special mode which doesn't trigger "click to proceed?")
+//      The default way to do this could be still supporting [wait .. 0.4], dialogue_say would be a user function which parses the string and does say_part + wait x + say_pa
 //  Implement Dialogue append string ([wait for click])
 //  New demo: Racing again. Notions:
 //      Use an existing map (that ice thingy from overgrowth campaign)
@@ -89,6 +100,8 @@ API:
 // Collapse dialogue_say into say + wait
 // Enable some key which allows typing a literal value in-place
 // Function search
+// BUG: there is a memory leak regarding MemoryCell reusing. When reusing a Cell we need to null at least string/array parts
+//      so they could be garbage collected
 
 
 #include "triggerkit/ui.as"
@@ -289,12 +302,15 @@ array<Operator_Definition@>@ collect_operator_definitions(array<Operator_Group@>
         for (uint operator_index = 0; operator_index < group.operators.length(); operator_index++) {
             Operator_Definition@ operator = group.operators[operator_index];
 
-            result.insertLast(group.operators[operator_index]);
+            result.insertLast(operator);
         }
     }
 
     return result;
 }
+
+// TODO temporary variable
+uint num_compilation_errors = 0;
 
 void compile_everything() {
     auto time = GetPerformanceCounter();
@@ -304,6 +320,9 @@ void compile_everything() {
     for (uint trigger_index = 0; trigger_index < state.triggers.length(); trigger_index++) {
         Trigger@ trigger = state.triggers[trigger_index];
         Function_Definition@ function_definition = convert_trigger_to_function_definition(trigger);
+
+        translation_context.current_site.line_number = 0;
+        translation_context.current_site.trigger_index = 0;
 
         trigger.function_entry_pointer = compile_single_function_definition(translation_context, function_definition);
     }
@@ -317,7 +336,9 @@ void compile_everything() {
 
     Log(info, "load_state_and_compile_code :: " + translation_context.expressions_translated + " expressions translated, took " + get_time_delta_in_ms(time) + "ms");
 
-    print_compilation_debug_info(translation_context);
+    // print_compilation_debug_info(translation_context);
+
+    num_compilation_errors = translation_context.compiler_errors.length();
 }
 
 void Init(string p_level_name) {

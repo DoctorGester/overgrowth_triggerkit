@@ -176,7 +176,7 @@ string literal_type_to_ui_string(Literal_Type literal_type) {
 string literal_to_ui_string(Literal_Type literal_type, Memory_Cell@ value) {
     switch (literal_type) {
         case LITERAL_TYPE_REGION: return colored_literal("<") + region_id_to_region_name(int(value.number_value)) + colored_literal(">");
-        case LITERAL_TYPE_CHARACTER: return colored_literal("<") + object_id_to_object_name(int(value.number_value)) + colored_literal(">");
+        case LITERAL_TYPE_CHARACTER: return colored_literal("<") + character_id_to_character_name(int(value.number_value)) + colored_literal(">");
         case LITERAL_TYPE_POSE: return colored_literal("<") + pose_id_to_pose_name(int(value.number_value)) + colored_literal(">");
         case LITERAL_TYPE_CAMERA: return colored_literal("<") + camera_id_to_camera_name(int(value.number_value)) + colored_literal(">");
         case LITERAL_TYPE_NUMBER: return colored_literal(value.number_value + "");
@@ -207,6 +207,23 @@ string literal_to_ui_string(Literal_Type literal_type, Memory_Cell@ value) {
 
 void emit_literal_bytecode(Translation_Context@ ctx, Expression@ expression) {
     array<Instruction>@ target = ctx.code;
+
+    bool is_valid = true;
+
+    int handle_id = int(expression.literal_value.number_value);
+
+    switch (expression.literal_type) {
+        // Reference types
+        case LITERAL_TYPE_CAMERA: is_valid = validate_hotspot_id(handle_id, HOTSPOT_CAMERA_TYPE); break;
+        case LITERAL_TYPE_CHARACTER: is_valid = validate_character_id(handle_id); break;
+        case LITERAL_TYPE_REGION: is_valid = validate_hotspot_id(handle_id, HOTSPOT_REGION_TYPE); break;
+        case LITERAL_TYPE_POSE: is_valid = validate_hotspot_id(handle_id, HOTSPOT_DIALOGUE_POSE_TYPE); break;
+    }
+
+    if (!is_valid) {
+        report_compiler_error(ctx, "Entity of type " + literal_type_to_ui_string(expression.literal_type) + " with id " + handle_id + " was not found");
+        return;
+    }
 
     switch (expression.literal_type) {
         // Enums and reference types go there
@@ -373,7 +390,7 @@ bool draw_editable_literal(Literal_Type literal_type, Memory_Cell@ literal_value
         }
 
         case LITERAL_TYPE_CHARACTER: {
-            return draw_handle_editor(object_id_to_object_name, list_character_objects(), literal_value, unique_id);
+            return draw_handle_editor(character_id_to_character_name, list_character_objects(), literal_value, unique_id);
         }
 
         case LITERAL_TYPE_POSE: {

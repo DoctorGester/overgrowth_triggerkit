@@ -88,7 +88,6 @@ class Operator_Definition {
     Literal_Type right_operand_type;
 
     Operator_Group@ parent_group;
-
     Operator_Type operator_type;
     Native_Function_Executor@ native_executor;
     Instruction_Type instruction_type;
@@ -635,6 +634,11 @@ Api_Builder@ build_api() {
         .returns(LITERAL_TYPE_NUMBER)
         .takes(LITERAL_TYPE_NUMBER, "n");
 
+    api
+        .func("jump", api::jump)
+        .fmt("Now I say 'jump', {}")
+        .takes(LITERAL_TYPE_CHARACTER);
+
     api.verify();
 
     return api;
@@ -783,6 +787,14 @@ namespace operators {
 }
 
 namespace api {
+    void jump(Native_Call_Context@ ctx){
+        int character_id = ctx.take_handle_id();
+
+        MovementObject@ character = ReadCharacterID(character_id);
+
+        character.ReceiveScriptMessage("triggerkit_jump");
+    }
+
     void do_nothing(Native_Call_Context@ ctx){
     }
 

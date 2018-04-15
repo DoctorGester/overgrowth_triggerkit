@@ -45,6 +45,9 @@ const string type_color = "\x1BB6FF00FF";
 const string literal_color = "\x1BFF7FEDFF";
 const string string_color = "\x1BFFB27FFF";
 const string identifier_color = "\x1BC0C0C0FF";
+const string error_color = "\x1BFF0000FF";
+
+const string not_found = error_color + "Not found" + default_color;
 
 string colored_keyword(const string keyword) {
     return keyword_color + keyword + default_color;
@@ -62,9 +65,44 @@ string colored_literal(string value) {
     return literal_color + value + default_color;
 }
 
+// TODO We will probably use that in the compiler, so it needs to move!
+bool validate_hotspot_id(int hotspot_id, string expected_type) {
+    if (!ObjectExists(hotspot_id)) {
+        return false;
+    }
+
+    Object@ hotspot = ReadObjectFromID(hotspot_id);
+
+    if (hotspot.GetType() != _hotspot_object) {
+        return false;
+    }
+
+    if (cast<Hotspot@>(hotspot).GetTypeString() != expected_type) {
+        return false;
+    }
+
+    return true;
+}
+
+bool validate_character_id(int character_id) {
+    if (!ObjectExists(character_id)) {
+        return false;
+    }
+
+    Object@ object = ReadObjectFromID(character_id);
+
+    if (object.GetType() != _movement_object) {
+        return false;
+    }
+
+    // TODO validate that we are not referring to a pose character
+
+    return true;
+}
+
 string camera_id_to_camera_name(int camera_id) {
-    if (!ObjectExists(camera_id)) {
-        return "None";
+    if (!validate_hotspot_id(camera_id, HOTSPOT_CAMERA_TYPE)) {
+        return not_found;
     }
 
     Object@ camera_object = ReadObjectFromID(camera_id);
@@ -72,8 +110,8 @@ string camera_id_to_camera_name(int camera_id) {
 }
 
 string region_id_to_region_name(int region_id) {
-    if (!ObjectExists(region_id)) {
-        return "None";
+    if (!validate_hotspot_id(region_id, HOTSPOT_REGION_TYPE)) {
+        return not_found;
     }
 
     Object@ region_object = ReadObjectFromID(region_id);
@@ -87,8 +125,8 @@ string region_id_to_region_name(int region_id) {
 }
 
 string pose_id_to_pose_name(int pose_id) {
-    if (!ObjectExists(pose_id)) {
-        return "None";
+    if (!validate_hotspot_id(pose_id, HOTSPOT_DIALOGUE_POSE_TYPE)) {
+        return not_found;
     }
 
     Object@ pose_object = ReadObjectFromID(pose_id);
@@ -101,20 +139,23 @@ string pose_id_to_pose_name(int pose_id) {
     return pose_name;
 }
 
-// TODO this function name is a bit ambigious, we really rely that this is a Character object
-string object_id_to_object_name(int object_id) {
-    Object@ object = ReadObjectFromID(object_id);
+string character_id_to_character_name(int character_id) {
+    if (!validate_character_id(character_id)) {
+        return not_found;
+    }
+
+    Object@ object = ReadObjectFromID(character_id);
     string object_name = object.GetName();
 
     if (object_name.isEmpty()) {
-        string character_path = ReadCharacterID(object_id).char_path;
+        string character_path = ReadCharacterID(character_id).char_path;
         int last_slash_index = character_path.findLast("/");
 
         if (last_slash_index != -1) {
             character_path = character_path.substr(last_slash_index + 1);
         }
 
-        return character_path + " (#" + object_id + ")";
+        return character_path + " (#" + character_id + ")";
     }
 
     return object_name;
@@ -163,12 +204,12 @@ array<Object@>@ list_character_objects() {
     return result;
 }
 
-string function_call_to_string_simple(Expression@ expression) {
+string function_call_to_string_simple(Expression@ expression, Variable_Scope@ variable_scope) {
     array<string> arguments;
     arguments.resize(expression.arguments.length());
 
     for (uint argument_index = 0; argument_index < expression.arguments.length(); argument_index++) {
-        arguments[argument_index] = expression_to_string(expression.arguments[argument_index]);
+        arguments[argument_index] = expression_to_string(expression.arguments[argument_index], variable_scope);
     }
 
     return expression.identifier_name + "(" + join(arguments, ", ") + ")";
@@ -203,18 +244,32 @@ array<string>@ split_function_format_string_into_pieces(string format) {
     return result;
 }
 
+Variable@ find_scope_variable_by_name(string name, Variable_Scope@ variable_scope, bool& success) {
+    array<Variable@> scope_variables;
+    collect_scope_variables(variable_scope, scope_variables);
+
+    success = false;
+
+    for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
+        if (scope_variables[variable_index].name == name) {
+            success = true;
+            return scope_variables[variable_index];
+        }
+    }
+
+    return null;
+}
+
 // TODO this shouldn't be in ui_util.as
 Literal_Type determine_expression_literal_type(Expression@ expression, Variable_Scope@ variable_scope) {
     switch (expression.type) {
         case EXPRESSION_LITERAL: return expression.literal_type;
         case EXPRESSION_IDENTIFIER: {
-            array<Variable@> scope_variables;
-            collect_scope_variables(variable_scope, scope_variables);
+            bool found_variable;
+            Variable@ variable = find_scope_variable_by_name(expression.identifier_name, variable_scope, found_variable);
 
-            for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
-                if (scope_variables[variable_index].name == expression.identifier_name) {
-                    return scope_variables[variable_index].type;
-                }
+            if (found_variable) {
+                return variable.type;
             }
 
             break;
@@ -277,11 +332,11 @@ Operator_Definition@ find_operator_definition_by_operator_type_and_operand_types
     return null;
 }
 
-string function_call_to_string(Expression@ expression) {
+string function_call_to_string(Expression@ expression, Variable_Scope@ variable_scope) {
     Function_Definition@ function_definition = find_function_definition_by_function_name(expression.identifier_name);
 
     if (function_definition is null) {
-        return function_call_to_string_simple(expression);
+        return function_call_to_string_simple(expression, variable_scope);
     }
 
     string result = "";
@@ -297,7 +352,7 @@ string function_call_to_string(Expression@ expression) {
             Expression@ argument_expression = expression.arguments[argument_index];
 
             if (argument_expression !is null) {
-                argument_as_string = expression_to_string(argument_expression);
+                argument_as_string = expression_to_string(argument_expression, variable_scope);
 
                 if (argument_expression.type != EXPRESSION_LITERAL && argument_expression.type != EXPRESSION_IDENTIFIER) {
                     argument_as_string = "(" + argument_as_string + ")";
@@ -314,7 +369,19 @@ string function_call_to_string(Expression@ expression) {
     //return expression.identifier_name + "(" + join(arguments, ", ") + ")";
 }
 
-string expression_to_string(Expression@ expression) {
+string colored_identifier_name_or_not_found(string identifier_name, Variable_Scope@ variable_scope) {
+    bool found = false;
+
+    find_scope_variable_by_name(identifier_name, variable_scope, found);
+
+    if (found) {
+        return colored_identifier(identifier_name);
+    }
+
+    return "[" + not_found + "]";
+}
+
+string expression_to_string(Expression@ expression, Variable_Scope@ variable_scope) {
     if (expression is null) {
         return "<ERROR>";
     }
@@ -322,9 +389,9 @@ string expression_to_string(Expression@ expression) {
     switch (expression.type) {
         case EXPRESSION_OPERATOR: {
             string result = join({
-                expression_to_string(expression.left_operand),
+                expression_to_string(expression.left_operand, variable_scope),
                 operator_type_to_ui_string(expression.operator_type),
-                expression_to_string(expression.right_operand)
+                expression_to_string(expression.right_operand, variable_scope)
             }, " ");
 
             //if (expression.left_operand.type == EXPRESSION_OPERATOR || expression.right_operand.type == EXPRESSION_OPERATOR) {
@@ -339,24 +406,27 @@ string expression_to_string(Expression@ expression) {
                 colored_literal_type(expression.literal_type),
                 colored_identifier(expression.identifier_name),
                 "=",
-                expression_to_string(expression.value_expression)
+                expression_to_string(expression.value_expression, variable_scope)
             }, " ");
         }
             
         case EXPRESSION_ASSIGNMENT:
             return join({
                 colored_keyword("Set"),
-                colored_identifier(expression.identifier_name),
+                colored_identifier_name_or_not_found(expression.identifier_name, variable_scope),
                 "=",
-                expression_to_string(expression.value_expression)
+                expression_to_string(expression.value_expression, variable_scope)
             }, " ");
-        case EXPRESSION_IDENTIFIER: return colored_identifier(expression.identifier_name);
+        case EXPRESSION_IDENTIFIER: {
+            return colored_identifier_name_or_not_found(expression.identifier_name, variable_scope);
+        }
+
         case EXPRESSION_LITERAL: return literal_to_ui_string(expression.literal_type, expression.literal_value);
-        case EXPRESSION_CALL: return function_call_to_string(expression);
+        case EXPRESSION_CALL: return function_call_to_string(expression, variable_scope);
         case EXPRESSION_REPEAT: {
             return join({
                 colored_keyword("Repeat"),
-                expression_to_string(expression.value_expression),
+                expression_to_string(expression.value_expression, variable_scope),
                 "times"
             }, " ");
         }
@@ -364,13 +434,13 @@ string expression_to_string(Expression@ expression) {
         case EXPRESSION_WHILE: {
             return join({
                 colored_keyword("While"),
-                expression_to_string(expression.value_expression) + ", do"
+                expression_to_string(expression.value_expression, variable_scope) + ", do"
             }, " ");
         }
 
         case EXPRESSION_FORK: return colored_keyword("Run in parallel");
 
-        case EXPRESSION_IF: return colored_keyword("If ") + expression_to_string(expression.value_expression);
+        case EXPRESSION_IF: return colored_keyword("If ") + expression_to_string(expression.value_expression, variable_scope);
     }
 
     return "not_implemented (" + expression.type + ")";

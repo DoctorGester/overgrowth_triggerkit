@@ -197,6 +197,9 @@ void draw_icon_menu_bar() {
         compile_everything();
     }
 
+    ImGui_SameLine();
+    ImGui_Text("Errors: " + num_compilation_errors);
+
     ImGui_EndGroup();
 }
 
@@ -502,6 +505,10 @@ bool draw_variable_selector(Ui_Frame_State@ frame, Expression@ expression, Varia
     string initially_selected_variable_name = expression.identifier_name;
     string preview_text = expression.type == EXPRESSION_IDENTIFIER ? expression.identifier_name : "";
 
+    if (result_variable is null) {
+        preview_text = "[" + not_found + "]";
+    }
+
     if (ImGui_BeginCombo(frame.unique_id("variable_selector"), preview_text)) {
         for (uint variable_index = 0; variable_index < scope_variables.length(); variable_index++) {
             string variable_name = scope_variables[variable_index].name;
@@ -597,7 +604,7 @@ void draw_expression_editor_popup(Ui_Frame_State@ frame, bool draw_literal_edito
 }
 
 void draw_editable_expression(Expression@ expression, Ui_Frame_State@ frame, bool parent_is_a_code_block = false, Literal_Type limit_to = LITERAL_TYPE_VOID) {
-    if (ImGui_Button(expression_to_string(expression) + frame.unique_id("editable_button"))) {
+    if (ImGui_Button(expression_to_string(expression, frame.top_scope) + frame.unique_id("editable_button"))) {
         open_expression_editor_popup(expression, frame);
     }
 
@@ -716,13 +723,13 @@ void draw_operator_as_broken_into_pieces(Expression@ expression, Ui_Frame_State@
     Operator_Definition@ fitting_operator = find_operator_definition_by_expression_in_context(expression, frame.top_scope);
 
     if (fitting_operator is null) {
-        ImGui_Text(expression_to_string(expression.left_operand));
+        ImGui_Text(expression_to_string(expression.left_operand, frame.top_scope));
         ImGui_SameLine();
 
         ImGui_Text(operator_type_to_ui_string(expression.operator_type));
         ImGui_SameLine();
 
-        ImGui_Text(expression_to_string(expression.right_operand));
+        ImGui_Text(expression_to_string(expression.right_operand, frame.top_scope));
 
         return;
     }
@@ -773,7 +780,15 @@ void draw_expression_as_broken_into_pieces(Expression@ expression, Ui_Frame_Stat
         }
         
         case EXPRESSION_IDENTIFIER: {
-            ImGui_Button(expression.identifier_name + frame.unique_id("identifier"));
+            bool found = false;
+            find_scope_variable_by_name(expression.identifier_name, frame.top_scope, found);
+
+            if (found) {
+                ImGui_Button(expression.identifier_name + frame.unique_id("identifier"));
+            } else {
+                ImGui_Button(not_found + frame.unique_id("identifier"));
+            }
+            
             break;
         }
 
