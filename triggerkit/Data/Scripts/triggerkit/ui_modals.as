@@ -50,7 +50,7 @@ void draw_globals_modal() {
 
         {
             ImGui_PushItemWidth(int(free_width * 0.35));
-            draw_editable_literal(variable.type, variable.value, "###" + variable_index);
+            draw_editable_literal(variable.type, variable.value, "###editable_literal" + variable_index);
             ImGui_PopItemWidth();
         }
 

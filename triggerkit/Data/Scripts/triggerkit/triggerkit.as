@@ -7,7 +7,6 @@
 // Serialization format versioning
 // Fix some todos
 // Break expression
-// Fix the return expression + return in UI
 // Hide all non-void returns in statement editor popup, but add an exception boolean which would allow functions like CreateCharacter to be there
 // Newbie mode: hide poweruser expressions and advanced functions
 // We need to be able to put cameras/poses/regions into categories
@@ -67,6 +66,7 @@ API:
 //  Alternatively Every X seconds can be easily implemented with while (true) wait
 
 // UI: User functions!
+//     Return in UI
 // Compiler: Actual function types so we could get rid of EXPRESSION_FORK and the whole strapped on event architecture
 // VM/Compiler: Resize stack dynamically or just figure out maximum stack size and set it to that
 // VM: Exceptions (divide by zero, etc)
@@ -112,6 +112,7 @@ API:
 #include "triggerkit/persistence.as"
 #include "triggerkit/api.as"
 #include "triggerkit/shared_definitions.as"
+#include "triggerkit/util.as"
 #include "triggerkit/dialogue/dialogue.as"
 
 Virtual_Machine@ vm;

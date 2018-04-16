@@ -20,6 +20,7 @@ class Trigger_Kit_State {
     array<Expression@> edited_expressions;
     array<Function_Category> selected_categories;
 
+    // Just arrays, nothing to see there
     array<Function_Definition@> function_definitions;
     array<Event_Definition@> native_events;
     array<Operator_Group@> operator_groups;
@@ -33,12 +34,6 @@ class Trigger_Kit_State {
     bool is_cameras_window_open = false;
     bool is_poses_window_open = true;
     bool is_regions_window_open = false;
-}
-
-class Variable {
-    Literal_Type type;
-    Memory_Cell value;
-    string name;
 }
 
 class Ui_Frame_State {
@@ -81,28 +76,6 @@ void pop_ui_variable_scope(Ui_Frame_State@ frame) {
     @frame.top_scope = frame.top_scope.parent_scope;
 }
 
-// TODO this is technically used in compiler, shouldn't be in ui.as
-void collect_scope_variables(Variable_Scope@ from_scope, array<Variable@>@ target, Literal_Type limit_to = LITERAL_TYPE_VOID) {
-    // TODO Variable shadowing duplicates variables!
-    for (uint variable_index = 0; variable_index < from_scope.variables.length(); variable_index++) {
-        if (limit_to == LITERAL_TYPE_VOID || limit_to == from_scope.variables[variable_index].type) {
-            target.insertLast(from_scope.variables[variable_index]);
-        }
-    }
-
-    if (from_scope.parent_scope !is null) {
-        collect_scope_variables(from_scope.parent_scope, target, limit_to);
-    }
-}
-
-Variable@ make_variable(Literal_Type type, string name) {
-    Variable variable;
-    variable.type = type;
-    variable.name = name;
-
-    return variable;
-}
-
 Trigger_Kit_State@ make_trigger_kit_state() {
     Trigger_Kit_State state;
 
@@ -114,6 +87,35 @@ Trigger_Kit_State@ make_trigger_kit_state() {
     state.operator_groups = api_builder.operator_groups;
 
     return state;
+}
+
+void draw_modals_if_necessary() {
+    if (state.is_regions_window_open) {
+        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
+        if (ImGui_Begin("Regions###regions_window", state.is_regions_window_open)) {
+            draw_regions_window();
+
+            ImGui_End();
+        }
+    }
+
+    if (state.is_cameras_window_open) {
+        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
+        if (ImGui_Begin("Cameras###camers_window", state.is_cameras_window_open)) {
+            draw_cameras_window();
+
+            ImGui_End();
+        }
+    }
+
+    if (state.is_poses_window_open) {
+        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
+        if (ImGui_Begin("Poses###poses_window", state.is_poses_window_open)) {
+            draw_poses_window();
+
+            ImGui_End();
+        }
+    }
 }
 
 void draw_icon_menu_bar() {
@@ -144,33 +146,6 @@ void draw_icon_menu_bar() {
         draw_globals_modal();
 
         ImGui_EndPopup();
-    }
-
-    if (state.is_regions_window_open) {
-        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
-        if (ImGui_Begin("Regions###regions_window", state.is_regions_window_open)) {
-            draw_regions_window();
-
-            ImGui_End();
-        }
-    }
-
-    if (state.is_cameras_window_open) {
-        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
-        if (ImGui_Begin("Cameras###camers_window", state.is_cameras_window_open)) {
-            draw_cameras_window();
-
-            ImGui_End();
-        }
-    }
-
-    if (state.is_poses_window_open) {
-        ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
-        if (ImGui_Begin("Poses###poses_window", state.is_poses_window_open)) {
-            draw_poses_window();
-
-            ImGui_End();
-        }
     }
 
     if (icon_button("Regions", "open_regions", icons::action_region)) {
@@ -241,28 +216,28 @@ void draw_trigger_kit() {
         return;
     }
 
-    //PushStyles();
+    draw_modals_if_necessary();
 
-    ImGui_Begin("TriggerKit", ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_ResizeFromAnySide);
-
-    float windowWidth = ImGui_GetWindowWidth();
-    float window_height = ImGui_GetWindowHeight();
-
-    // TODO this hides the cameras window because the modal is handled in draw_icon_menu_bar
-    // ImGui_IsWindowCollapsed() is not a thing right now
-    if (window_height < 20) {
+    if (!ImGui_Begin("TriggerKit", ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_ResizeFromAnySide)) {
         ImGui_End();
         return;
     }
 
-    if (windowWidth < 500) {
-        windowWidth = 500;
-        ImGui_SetWindowSize(vec2(windowWidth, window_height), ImGuiSetCond_Always);
+    float window_width = ImGui_Getwindow_width();
+    float window_height = ImGui_GetWindowHeight();
+
+    if (window_height < 20) {
+        return;
+    }
+
+    if (window_width < 500) {
+        window_width = 500;
+        ImGui_SetWindowSize(vec2(window_width, window_height), ImGuiSetCond_Always);
     }
 
     if (window_height < 300) {
         window_height = 300;
-        ImGui_SetWindowSize(vec2(windowWidth, window_height), ImGuiSetCond_Always);
+        ImGui_SetWindowSize(vec2(window_width, window_height), ImGuiSetCond_Always);
     }
 
     if (ImGui_BeginMenuBar()) {
@@ -280,7 +255,6 @@ void draw_trigger_kit() {
     }
     
     ImGui_End();
-    //PopStyles();
 }
 
 void pre_expression_text(string text) {

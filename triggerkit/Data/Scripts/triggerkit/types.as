@@ -313,24 +313,23 @@ Expression@ parse_literal_value_from_string(Literal_Type literal_type, Parser_St
 }
 
 bool draw_handle_editor(Name_Resolver@ name_resolver, array<Object@>@ handles, Memory_Cell@ literal_value, string unique_id) {
-    array<string> handle_names;
+    int selected_handle_id = int(literal_value.number_value);
 
-    int selected_handle = -1;
+    if (ImGui_BeginCombo(unique_id, name_resolver(current_type))) {
+        for (uint handle_index = 0; handle_index < handles.length(); handle_index++) {
+            Object@ handle_object = handles[handle_index];
+            int handle_id = handle_object.GetID();
 
-    for (uint handle_index = 0; handle_index < handles.length(); handle_index++) {
-        Object@ handle_object = handles[handle_index];
-
-        // TODO a tad inefficient, could make a separate function which makes a name out of an object
-        handle_names.insertLast(name_resolver(handle_object.GetID()));
-
-        if (handle_object.GetID() == int(literal_value.number_value)) {
-            selected_handle = handle_index;
+            // TODO a tad inefficient (we are requesting an object by id again inside name_resolver),
+            //      could make a separate function which makes a name out of an object, but it's probably fine
+            if (ImGui_Selectable(name_resolver(handle_id), handle_id == selected_handle_id)) {
+                literal_value.number_value = handle_id;
+                ImGui_EndCombo();
+                return true;
+            }
         }
-    }
 
-    if (ImGui_Combo(unique_id, selected_handle, handle_names)) {
-        literal_value.number_value = handles[selected_handle].GetID();
-        return true;
+        ImGui_EndCombo();
     }
 
     return false;

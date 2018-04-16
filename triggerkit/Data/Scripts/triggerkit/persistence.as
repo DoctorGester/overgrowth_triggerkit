@@ -85,12 +85,7 @@ void parse_variables(Parser_State@ state, array<Variable>@ variables) {
         Literal_Type literal_type = serializeable_string_to_literal_type(first_word);
         string identifier_name = parser_next_word(state);
         Memory_Cell@ value = parse_literal_value_from_string(literal_type, state).literal_value;
-
-        // TODO make_variable
-        Variable variable;
-        variable.type = literal_type;
-        variable.name = identifier_name;
-        variable.value = value;
+        Variable@ variable = make_variable(literal_type, identifier_name, value);
 
         variables.insertLast(variable);
     }
