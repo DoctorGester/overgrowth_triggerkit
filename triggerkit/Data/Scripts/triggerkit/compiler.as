@@ -422,6 +422,41 @@ uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_
     return function_location;
 }
 
+void emit_function_call_arguments(Translation_Context@ ctx, Function_Definition@ definition) {
+    Variable_Scope@ current_scope = get_current_function_translation_unit(ctx).variable_scope;
+
+    int num_expected_arguments = definition.argument_types.length();
+    int num_actual_arguments = expression.arguments.length();
+
+    if (num_expected_arguments != num_actual_arguments) {
+        report_compiler_error(ctx,
+            "Incorrect number of arguments provided. " +
+            "Expected " + num_expected_arguments + ", got " + num_actual_arguments);
+
+        return;
+    }
+
+    if (num_expected_arguments > 0) {
+        for (int argument_index = num_expected_arguments - 1; argument_index >= 0; argument_index--) {
+            Literal_Type expected_type = definition.argument_types[argument_index];
+            Literal_Type actual_type = determine_expression_literal_type(expression.arguments[argument_index], current_scope);
+
+            if (expected_type != actual_type) {
+                string expected_type_name = literal_type_to_ui_string(expected_type);
+                string actual_type_name = literal_type_to_ui_string(actual_type);
+
+                report_compiler_error(ctx,
+                    "Incorrect argument type for argument #" + (argument_index + 1) +
+                    ". Expected " + expected_type_name + ", got " + actual_type_name);
+
+                return;
+            }
+
+            emit_expression_bytecode(ctx, expression.arguments[argument_index]);
+        }
+    }
+}
+
 void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, bool is_parent_a_block = false) {
     ctx.expressions_translated++;
 
@@ -517,11 +552,11 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
                 default: {
                     Variable_Scope@ current_scope = get_current_function_translation_unit(ctx).variable_scope;
-                    // TODO this uses state.operator_groups instead of ctx.operator_definitions, bad!
+                    // TODO this internally uses state.operator_groups instead of ctx.operator_definitions, bad!
                     Operator_Definition@ operator_definition = find_operator_definition_by_expression_in_context(expression, current_scope);
 
                     if (operator_definition is null) {
-                        Log(error, "Fatal error: operator definition not found for expression");
+                        report_compiler_error(ctx, "Can't find a fitting operator for expression");
                         return;
                     }
 
@@ -574,31 +609,23 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             Function_Definition@ function_definition = find_function_definition(ctx, expression.identifier_name);
 
             if (function_definition is null) {
-                Log(error, "Function not found in the API: " + expression.identifier_name);
-                assert(false);
+                report_compiler_error(ctx, "Function '" + expression.identifier_name + "' not found");
+                return;
             }
 
             if (function_definition.native) {
-                for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
-                    emit_expression_bytecode(ctx, expression.arguments[argument_index]);
-                }
+                emit_function_call_arguments(ctx, function_definition);
 
                 uint function_index = find_or_declare_native_function_index(ctx, function_definition);
 
-                // Log(info, "Declared native " + function_definition.function_name + " as " + function_index);
-
                 emit_instruction(make_native_call_instruction(function_index), target);
             } else {
-                // Log(info, "Declared " + function_definition.function_name + " as " + function_index);
-
                 // TODO Is this the right way to reserve space for a return value?
                 if (function_definition.return_type != LITERAL_TYPE_VOID) {
                     emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
                 }
 
-                for (int argument_index = expression.arguments.length() - 1; argument_index >= 0; argument_index--) {
-                    emit_expression_bytecode(ctx, expression.arguments[argument_index]);
-                }
+                emit_function_call_arguments(ctx, function_definition);
 
                 Instruction_To_Backpatch instruction_to_backpatch;
                 instruction_to_backpatch.instruction_address = target.length();
