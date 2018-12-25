@@ -30,6 +30,13 @@
 //               could maybe save as much state as we could and have a "Playtest" button which resets to this state?
 //               Although doesn't level reset just handle that? If we do not move the actual character's 'object' boxes it
 //               should work just fine
+// Enter skipping dialogue: we could mark functions as "macro" this way they would have their own scope but would still be full
+//                          inlined thus making code like
+//                          'if PlayerWantsToSkipDialogue then SkipAllRemainingActions()'
+//                          'Make X say Y'
+//                          'if PlayerWantsToSkipDialogue then SkipAllRemainingActions()'
+//                          be possible to insert in just one line
+
 
 /*
 API:

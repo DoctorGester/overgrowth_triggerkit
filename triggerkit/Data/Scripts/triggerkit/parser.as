@@ -32,6 +32,7 @@ const string KEYWORD_FORK = "fork";
 const string KEYWORD_IF = "if";
 const string KEYWORD_ELSE = "else";
 const string KEYWORD_RETURN = "return";
+const string KEYWORD_RETURN_VOID = "return void";
 const string KEYWORD_START_BLOCK = "(";
 const string KEYWORD_END_BLOCK = ")";
 
@@ -143,6 +144,10 @@ Expression@ parse_words_into_expression(Parser_State@ state) {
         Expression@ value_expression = parse_words_into_expression(state);
 
         return make_return(value_expression);
+    } else if (word == KEYWORD_RETURN_VOID) {
+        Expression@ value_expression = parse_words_into_expression(state);
+
+        return make_return(null);
     } else if (word == KEYWORD_IF) {
         Expression@ value_expression = parse_words_into_expression(state);
         Expression@ if_statement = make_if(value_expression);

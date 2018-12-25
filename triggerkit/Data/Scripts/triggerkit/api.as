@@ -44,6 +44,7 @@ class Function_Definition {
     Native_Function_Executor@ native_executor;
     array<Expression@>@ user_code = {};
     bool native = false;
+    bool macro = false;
 
     // Used internally
     uint call_site;
@@ -162,6 +163,19 @@ class Api_Builder {
         events.resize(EVENT_LAST);
     }
 
+    Function_Definition@ macro(string name, array<Expression@>@ user_code) {
+        Function_Definition instance;
+        instance.function_name = name;
+        instance.returns(LITERAL_TYPE_VOID);
+        instance.native = false;
+        instance.macro = true;
+        @instance.user_code = user_code;
+
+        functions.insertLast(instance);
+
+        return instance;
+    }
+
     Function_Definition@ func(string name, Native_Function_Executor@ native_executor) {
         Function_Definition instance;
         instance.function_name = name;
@@ -220,6 +234,10 @@ class Api_Builder {
 
             if (function_definition.function_category == CATEGORY_NONE) {
                 Log(error, "[API] " + name_in_backticks + " is missing a category");
+            }
+
+            if (function_definition.native && function_definition.macro) {
+                Log(error, "[API] " + name_in_backticks + " is a native macro, those are not a thing!");
             }
         }
     }
@@ -638,6 +656,14 @@ Api_Builder@ build_api() {
         .func("jump", api::jump)
         .fmt("Now I say 'jump', {}")
         .takes(LITERAL_TYPE_CHARACTER);
+
+    api
+        .func("macro_say", api::macro_say())
+        .name("Make character talk (macro)")
+        .fmt("> {}: {}")
+        .category(CATEGORY_DIALOGUE)
+        .takes(LITERAL_TYPE_CHARACTER, "character")
+        .takes(LITERAL_TYPE_STRING, "say_what");
 
     api.verify();
 
@@ -1148,6 +1174,17 @@ namespace api {
                 return @ "n"
             ) else (
                 return op + call fib ( op - @ "n" $ Number 1 ) call fib ( op - @ "n" $ Number 2 )
+            )
+        """;
+
+        return parse_text_into_expression_array(code);
+    }
+
+    array<Expression@> macro_say() {
+        string code = """
+            call dialogue_say ( @ character @ say_what )
+            if call player_wants_to_skip_dialogue (
+                "return void"
             )
         """;
 

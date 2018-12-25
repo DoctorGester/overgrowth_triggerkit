@@ -362,7 +362,7 @@ int find_variable_location_hierarchical(Variable_Scope@ in_scope, string name, b
             reached_root_scope = true;
         }
 
-        return int(uint(in_scope.local_variable_indices[name])); // TODO is double cast necessary? Need testing
+        return int(in_scope.local_variable_indices[name]);
     }
 
     if (in_scope.parent_scope is null) {
@@ -619,6 +619,13 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                 uint function_index = find_or_declare_native_function_index(ctx, function_definition);
 
                 emit_instruction(make_native_call_instruction(function_index), target);
+            } else if (function_definition.macro) {
+                if (function_definition.return_type != LITERAL_TYPE_VOID) {
+                    emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
+                }
+
+                emit_function_call_arguments(ctx, function_definition);
+                emit_block(ctx, function_definition.user_code);
             } else {
                 // TODO Is this the right way to reserve space for a return value?
                 if (function_definition.return_type != LITERAL_TYPE_VOID) {
@@ -651,9 +658,36 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
         case EXPRESSION_RETURN: {
             Function_Translation_Unit@ current_function_translation_unit = get_current_function_translation_unit(ctx);
+            Function_Definition@ definition = current_function_translation_unit.definition;
 
-            emit_expression_bytecode(ctx, expression.value_expression);
-            emit_instruction(make_instruction(INSTRUCTION_TYPE_RETURN), target);
+            // TODO in a macro case we should also check if the macro has returns at all
+            if (expression.value_expression != null) {
+                Literal_Type return_value_type = determine_expression_literal_type(expression.value_expression, current_function_translation_unit.variable_scope);
+
+                if (return_value_type != definition.return_type) {
+                    report_compiler_error(ctx, 
+                        "Invalid return from '" + 
+                        definition.function_name + 
+                        "': " + literal_type_to_ui_string(return_value_type) + " expected (" + literal_type_to_ui_string(definition.return_type) + ")"
+                    );
+
+                    return;
+                }
+
+                emit_expression_bytecode(ctx, expression.value_expression);
+                emit_instruction(make_instruction(INSTRUCTION_TYPE_RETURN), target); 
+            } else {
+                if (definition.return_type != LITERAL_TYPE_VOID) {
+                    report_compiler_error(ctx, 
+                        "Invalid return from '" + 
+                        definition.function_name + 
+                        "': " + literal_type_to_ui_string(return_value_type) + " expected (" + literal_type_to_ui_string(LITERAL_TYPE_VOID) + ")"
+                    );
+
+                    return;
+                }
+            }
+
             emit_instruction(make_instruction(INSTRUCTION_TYPE_RET), target);
 
             uint ret_address = target.length() - 1;
