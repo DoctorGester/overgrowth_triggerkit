@@ -7,6 +7,10 @@ string parser_next_word(Parser_State@ state) {
     return state.words[state.current_word++];
 }
 
+string parser_peek_next_word(Parser_State@ state) {
+    return state.words[state.current_word];
+}
+
 bool has_finished_parsing(Parser_State@ state) {
     return state.current_word >= state.words.length(); 
 }
@@ -107,6 +111,8 @@ array<string> split_into_words_and_quoted_pieces(string text) {
 Expression@ parse_words_into_expression(Parser_State@ state) {
     string word = parser_next_word(state);
 
+    Log(info, word);
+
     if (word == KEYWORD_DECLARE) {
         string type_name = parser_next_word(state);
         string identifier_name = parser_next_word(state);
@@ -145,17 +151,22 @@ Expression@ parse_words_into_expression(Parser_State@ state) {
 
         return make_return(value_expression);
     } else if (word == KEYWORD_RETURN_VOID) {
-        Expression@ value_expression = parse_words_into_expression(state);
-
         return make_return(null);
     } else if (word == KEYWORD_IF) {
         Expression@ value_expression = parse_words_into_expression(state);
         Expression@ if_statement = make_if(value_expression);
 
         parse_words_into_expression_array(state, if_statement.block_body);
-        parser_next_word(state); // Else
 
-        parse_words_into_expression_array(state, if_statement.else_block_body);
+        if (!has_finished_parsing(state)) {
+            string next_word = parser_peek_next_word(state);
+
+            if (next_word == KEYWORD_ELSE) {
+                parser_next_word(state); // Else
+
+                parse_words_into_expression_array(state, if_statement.else_block_body);
+            }
+        }
 
         return if_statement;
     } else if (word == KEYWORD_REPEAT) {

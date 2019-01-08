@@ -8,7 +8,10 @@ Variable@ make_variable(Literal_Type type, string name, Memory_Cell@ value = nul
     Variable variable;
     variable.type = type;
     variable.name = name;
-    variable.value = value;
+
+    if (!(value is null)) {
+        variable.value = value;
+    }
 
     return variable;
 }

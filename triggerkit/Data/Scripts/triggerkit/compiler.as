@@ -422,11 +422,11 @@ uint emit_user_function(Translation_Context@ ctx, Function_Definition@ function_
     return function_location;
 }
 
-void emit_function_call_arguments(Translation_Context@ ctx, Function_Definition@ definition) {
+void emit_function_call_arguments(Translation_Context@ ctx, Function_Definition@ definition, Expression@ call_expression) {
     Variable_Scope@ current_scope = get_current_function_translation_unit(ctx).variable_scope;
 
     int num_expected_arguments = definition.argument_types.length();
-    int num_actual_arguments = expression.arguments.length();
+    int num_actual_arguments = call_expression.arguments.length();
 
     if (num_expected_arguments != num_actual_arguments) {
         report_compiler_error(ctx,
@@ -439,7 +439,7 @@ void emit_function_call_arguments(Translation_Context@ ctx, Function_Definition@
     if (num_expected_arguments > 0) {
         for (int argument_index = num_expected_arguments - 1; argument_index >= 0; argument_index--) {
             Literal_Type expected_type = definition.argument_types[argument_index];
-            Literal_Type actual_type = determine_expression_literal_type(expression.arguments[argument_index], current_scope);
+            Literal_Type actual_type = determine_expression_literal_type(call_expression.arguments[argument_index], current_scope);
 
             if (expected_type != actual_type) {
                 string expected_type_name = literal_type_to_ui_string(expected_type);
@@ -452,7 +452,7 @@ void emit_function_call_arguments(Translation_Context@ ctx, Function_Definition@
                 return;
             }
 
-            emit_expression_bytecode(ctx, expression.arguments[argument_index]);
+            emit_expression_bytecode(ctx, call_expression.arguments[argument_index]);
         }
     }
 }
@@ -592,7 +592,9 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
 
             uint jmp_into_if_location = emit_placeholder_jmp_if_instruction(target);
 
-            emit_block(ctx, expression.else_block_body);
+            if (!(expression.else_block_body is null)) {
+                emit_block(ctx, expression.else_block_body);
+            }
 
             uint jmp_over_the_whole_if_location = emit_placeholder_jmp_instruction(target);
 
@@ -614,7 +616,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             }
 
             if (function_definition.native) {
-                emit_function_call_arguments(ctx, function_definition);
+                emit_function_call_arguments(ctx, function_definition, expression);
 
                 uint function_index = find_or_declare_native_function_index(ctx, function_definition);
 
@@ -624,7 +626,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                     emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
                 }
 
-                emit_function_call_arguments(ctx, function_definition);
+                emit_function_call_arguments(ctx, function_definition, expression);
                 emit_block(ctx, function_definition.user_code);
             } else {
                 // TODO Is this the right way to reserve space for a return value?
@@ -632,7 +634,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                     emit_instruction(make_instruction(INSTRUCTION_TYPE_CONST_0), target);
                 }
 
-                emit_function_call_arguments(ctx, function_definition);
+                emit_function_call_arguments(ctx, function_definition, expression);
 
                 Instruction_To_Backpatch instruction_to_backpatch;
                 instruction_to_backpatch.instruction_address = target.length();
@@ -661,7 +663,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
             Function_Definition@ definition = current_function_translation_unit.definition;
 
             // TODO in a macro case we should also check if the macro has returns at all
-            if (expression.value_expression != null) {
+            if (!(expression.value_expression is null)) {
                 Literal_Type return_value_type = determine_expression_literal_type(expression.value_expression, current_function_translation_unit.variable_scope);
 
                 if (return_value_type != definition.return_type) {
@@ -681,7 +683,7 @@ void emit_expression_bytecode(Translation_Context@ ctx, Expression@ expression, 
                     report_compiler_error(ctx, 
                         "Invalid return from '" + 
                         definition.function_name + 
-                        "': " + literal_type_to_ui_string(return_value_type) + " expected (" + literal_type_to_ui_string(LITERAL_TYPE_VOID) + ")"
+                        "': " + literal_type_to_ui_string(definition.return_type) + " expected (" + literal_type_to_ui_string(LITERAL_TYPE_VOID) + ")"
                     );
 
                     return;

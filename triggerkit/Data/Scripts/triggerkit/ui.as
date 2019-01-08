@@ -63,6 +63,11 @@ class Ui_Special_Action {
     }
 }
 
+class Flat_Expression {
+    uint indent = 0;
+    Expression@ expression;
+}
+
 void push_ui_variable_scope(Ui_Frame_State@ frame) {
     Variable_Scope new_scope;
     @new_scope.parent_scope = frame.top_scope;
@@ -94,27 +99,27 @@ void draw_modals_if_necessary() {
         ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
         if (ImGui_Begin("Regions###regions_window", state.is_regions_window_open)) {
             draw_regions_window();
-
-            ImGui_End();
         }
+
+        ImGui_End();
     }
 
     if (state.is_cameras_window_open) {
         ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
         if (ImGui_Begin("Cameras###camers_window", state.is_cameras_window_open)) {
             draw_cameras_window();
-
-            ImGui_End();
         }
+
+        ImGui_End();
     }
 
     if (state.is_poses_window_open) {
         ImGui_SetNextWindowSize(vec2(300, 600), ImGuiSetCond_Appearing);
         if (ImGui_Begin("Poses###poses_window", state.is_poses_window_open)) {
             draw_poses_window();
-
-            ImGui_End();
         }
+
+        ImGui_End();
     }
 }
 
@@ -223,7 +228,7 @@ void draw_trigger_kit() {
         return;
     }
 
-    float window_width = ImGui_Getwindow_width();
+    float window_width = ImGui_GetWindowWidth();
     float window_height = ImGui_GetWindowHeight();
 
     if (window_height < 20) {
@@ -929,6 +934,73 @@ void draw_expressions(array<Expression@>@ expressions, Ui_Frame_State@ frame, Li
     }
 
     pop_ui_variable_scope(frame);
+}
+
+void flatten_expression_tree_recursively(Expression@ expression, uint indent_level, array<Flat_Expression>@ out_array) {
+    Flat_Expression flat;
+    @flat.expression = expression;
+    flat.indent = indent_level;
+
+    switch (expression.type) {
+        case EXPRESSION_IF: {
+            for (uint index = 0; index < expression.block_body.length(); index++) {
+                flatten_expression_tree_recursively(expression.block_body[index], indent_level + 1, out_array);
+            }
+
+            for (uint index = 0; index < expression.else_block_body.length(); index++) {
+                flatten_expression_tree_recursively(expression.else_block_body[index], indent_level + 1, out_array);
+            }
+
+            break;
+        }
+
+        case EXPRESSION_FORK:
+        case EXPRESSION_WHILE:
+        case EXPRESSION_REPEAT: {
+            for (uint index = 0; index < expression.block_body.length(); index++) {
+                flatten_expression_tree_recursively(expression.block_body[index], indent_level + 1, out_array);
+            }
+            break;
+        }
+    }
+}
+
+array<Flat_Expression>@ flatten_expression_tree(array<Expression@>@ expressions) {
+    array<Flat_Expression> result;
+
+    for (uint index = 0; index < expressions.length(); index++) {
+        flatten_expression_tree_recursively(expressions[index], 0, result);
+    }
+
+    return @result;
+}
+
+void draw_top_level_expression_element(Expression@ expression, vec2 at) {
+    vec2 cursor_previous = ImGui_GetCursorPos();
+
+    ImGui_SetCursorPos(at);
+    
+    /*if (ImGui_Selectable(expression_to_string(expression), false)) {
+        
+    }*/
+
+    ImGui_SetCursorPos(cursor_previous);
+}
+
+void draw_trigger_content_experimental(Trigger@ current_trigger) {
+    array<Flat_Expression>@ flattened = flatten_expression_tree(current_trigger.actions);
+
+    vec2 cursor_start = ImGui_GetCursorPos();
+
+    for (uint index = 0; index < flattened.length(); index++) {
+        Flat_Expression@ flat = @flattened[index];
+        Expression@ expression = flat.expression;
+        uint indent = flat.indent;
+
+        vec2 cursor = cursor_start + vec2(indent * 30, index * 40);
+
+        draw_top_level_expression_element(expression, cursor);
+    }
 }
 
 void draw_trigger_content(Trigger@ current_trigger) {

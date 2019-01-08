@@ -1183,7 +1183,7 @@ namespace api {
     array<Expression@> macro_say() {
         string code = """
             call dialogue_say ( @ character @ say_what )
-            if call player_wants_to_skip_dialogue (
+            if call player_wants_to_skip_dialogue ( ) (
                 "return void"
             )
         """;

@@ -126,6 +126,8 @@ Virtual_Machine@ vm;
 Trigger_Kit_State@ state;
 Enums@ enums;
 
+bool is_main_window_open = false;
+
 double get_time_delta_in_ms(uint64 start) {
     return double((GetPerformanceCounter() - start)*1000) / GetPerformanceFrequency();
 }
@@ -349,6 +351,12 @@ void compile_everything() {
     num_compilation_errors = translation_context.compiler_errors.length();
 }
 
+void Menu(){
+    if (ImGui_MenuItem("TriggerKit")) {
+        is_main_window_open = true;
+    }
+}
+
 void Init(string p_level_name) {
     PostScriptReload();
 
@@ -387,7 +395,7 @@ void DrawGUI2() {
 void DrawGUI() {
     environment::draw();
 
-    if (EditorModeActive()) {
+    if (EditorModeActive() && is_main_window_open) {
         // TODO this should be a config param
         // TODO pull out this and related code somewhere else
         ScriptParams@ level_script_params = level.GetScriptParams();

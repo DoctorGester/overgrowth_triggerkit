@@ -315,7 +315,7 @@ Expression@ parse_literal_value_from_string(Literal_Type literal_type, Parser_St
 bool draw_handle_editor(Name_Resolver@ name_resolver, array<Object@>@ handles, Memory_Cell@ literal_value, string unique_id) {
     int selected_handle_id = int(literal_value.number_value);
 
-    if (ImGui_BeginCombo(unique_id, name_resolver(current_type))) {
+    if (ImGui_BeginCombo(unique_id, name_resolver(selected_handle_id))) {
         for (uint handle_index = 0; handle_index < handles.length(); handle_index++) {
             Object@ handle_object = handles[handle_index];
             int handle_id = handle_object.GetID();
